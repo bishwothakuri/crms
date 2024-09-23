@@ -4,7 +4,7 @@ import socket
 import threading
 import queue
 import time
-import settings  # Assuming you have settings for socket ports and other configurations
+import settings  
 
 BUF_SIZE = 1000
 
