@@ -27,7 +27,7 @@ if __name__ == '__main__':
     logger.info("Starting worker nodes")
     processes = []
 
-    import coordinator
+    import code.worker_node.coordinator.coordinatord as coordinatord
 
 
     # create a queue between coordinator and builder
@@ -36,7 +36,7 @@ if __name__ == '__main__':
     cord_to_monitor_queue = Queue
 
     # creat and start daemons
-    coordinatord_process = Process(target=coordinator.main, args=(logger_name, cord_to_builder_queue, cord_to_monitor_queue))
+    coordinatord_process = Process(target=coordinatord.main, args=(logger_name, cord_to_builder_queue, cord_to_monitor_queue))
 
     processes.append(coordinatord_process)
 
