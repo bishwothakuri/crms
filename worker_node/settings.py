@@ -1,6 +1,7 @@
-from multiprocessing import Lock
+import multiprocessing
 
 import enum
+import sys
 import jsonpickle
 import psutil
 import socket
@@ -9,11 +10,14 @@ import yaml
 import pathlib
 import os
 import platform
+from utilities import HostTinyDbWrapper, QueryCriteriaTinyDbWrapper
 
 cfg = None
 socket_info = None
-collector_info = None
-api_endpoint = None
+broadcast_info = None
+host_db_manager = None
+query_db_manager = None
+collector_ready = multiprocessing.Event()
 
 
 class ServiceExit(Exception):
@@ -22,21 +26,6 @@ class ServiceExit(Exception):
     of all running threads and the main program.
     """
     pass
-
-
-class WorkerState(enum.Enum):
-    INITIALIZED = 1
-    REGISTERING = 2
-    REGISTERED = 3
-    REGISTER_FAILED = 4
-
-
-worker_state = WorkerState.INITIALIZED
-state_lock = Lock()
-
-def service_shutdown(signum, frame):
-    print('Caught signal %d' % signum)
-    raise ServiceExit
 
 
 class JsonCrmPktTypeHandler(jsonpickle.handlers.BaseHandler):
@@ -64,7 +53,7 @@ def initialize():
     # print(cfg)
 
     global socket_info
-    global api_endpoint
+    global broadcast_info
 
     af_map = {
         socket.AF_INET: 'IPv4',
@@ -72,7 +61,7 @@ def initialize():
 
     hostname = None
     if cfg['system']['type'] == 'simulation':
-        hostname = os.environ.get('HOSTNAME')
+        hostname = os.environ.get('HOSTNAME', 'default_hostname')
         interface_name = hostname + '-eth0'
     else:
         hostname = platform.uname()[1]
@@ -90,27 +79,32 @@ def initialize():
                     if addr.broadcast:
                         ipv4_broadcast_addr = addr.broadcast
 
-    socket_info = {
-        'hostname': hostname,
-        'inet_addr': ipv4_addr if ipv4_addr is not None else '0.0.0.0',
-        'listen_port': cfg['workerd']['listen_port'],
-        'send_port': cfg['workerd']['send_port'],
-        'builderd_port': cfg['builderd']['listen_port']
-    }
-
-    api_endpoint = cfg['builderd']['api_endpoint']
+    if ipv4_addr:
+        broadcast_info = {
+            'direct_broadcast_addr': ipv4_broadcast_addr if ipv4_broadcast_addr is not None else '',
+            'limited_broadcast_addr': '255.255.255.255',
+            'worker_dest_port': cfg['coordinatord']['worker_dest_port'],
+            'monitor_dest_port': cfg['coordinatord']['monitor_dest_port']
+        }
+        socket_info = {
+            'hostname': hostname,
+            'inet_addr': ipv4_addr,
+            'listen_port': cfg['coordinatord']['listen_port'],
+            'send_port': cfg['coordinatord']['send_port'],
+            'broadcast_port': cfg['coordinatord']['broadcast_port'],
+            'query_send_port': cfg['queryd']['send_port'],
+            'onos_port': cfg['queryd']['onos_port']
+        }
+    else:
+        print("Cannot get required system information. Shutdown collector system now!")
+        sys.exit(1)
 
     # register new enum handler for jsonpickle
     jsonpickle.handlers.registry.register(dtos.CrmPktType, JsonCrmPktTypeHandler)
 
-
-def check_worker_state(state: 'WorkerState') -> bool:
-    with state_lock:
-        global worker_state
-        return worker_state == state
-
-
-def update_worker_state(state: 'WorkerState'):
-    with state_lock:
-        global worker_state
-        worker_state = state
+    # initialize tinydb managers
+    global host_db_manager
+    global query_db_manager
+    global_db_access_lock = multiprocessing.Lock()
+    host_db_manager = HostTinyDbWrapper(os.path.join(main_path, 'host_db.json'), global_db_access_lock)
+    query_db_manager = QueryCriteriaTinyDbWrapper(os.path.join(main_path, 'criteria_db.json'), global_db_access_lock)
