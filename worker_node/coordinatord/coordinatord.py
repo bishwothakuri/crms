@@ -83,7 +83,7 @@ def main():
     task_control_thread.start()
 
     # Simulate adding a unique task once, without repeating continuously
-    task = {'type': 'build', 'config_file': 'config/prometheus-docker-compose.yml'}
+    task = {'type': 'build', 'config_file': 'config/monitoring-stack-docker-compose.yml'}
     
     if task_queue.qsize() == 0:  # Add only if the queue is empty
         task_queue.put(task)
