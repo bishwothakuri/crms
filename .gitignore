@@ -75,3 +75,15 @@ venv/
 
 # Others
 *.psu
+
+# Ignore logs and temporary files created by MQTT brokers
+mosquitto.log
+mqtt-logs/
+
+# Ignore Mosquitto database file
+mosquitto.db
+
+# Ignore MQTT config or certificate files
+*.conf
+*.crt
+*.key
