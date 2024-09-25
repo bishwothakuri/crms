@@ -1,63 +1,116 @@
-import paho.mqtt.client as mqtt
 import os
-from python_on_whales import docker
+import paho.mqtt.client as mqtt
+import yaml
+import subprocess
+import logging
+import threading
+import queue
 
-# MQTT connection details
-BROKER_HOST = "localhost"
-BROKER_PORT = 1883
-TOPIC_BUILD_PROMETHEUS = "build/prometheus"
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s - %(message)s",
+    handlers=[logging.StreamHandler()]
+)
+logger = logging.getLogger("Builderd")
 
-class BuilderMQTT:
-    def __init__(self):
-        self.client = mqtt.Client()
-        self.client.on_connect = self.on_connect
-        self.client.on_message = self.on_message
+# Queue to hold the tasks
+task_queue = queue.Queue()
 
-    def connect(self):
-        # Connect to the broker
-        self.client.connect(BROKER_HOST, BROKER_PORT, 60)
+# MQTT Callback for connection
+def on_connect(client, userdata, flags, rc):
+    if rc == 0:
+        logger.info("Successfully connected to MQTT Broker")
+    else:
+        logger.error(f"Failed to connect to MQTT Broker, return code {rc}")
+    client.subscribe("build/task")
+    logger.info("Subscribed to topic: build/task")
 
-    def on_connect(self, client, userdata, flags, rc):
-        print("Connected to MQTT Broker")
-        self.client.subscribe(TOPIC_BUILD_PROMETHEUS)
+# MQTT Callback for receiving messages
+def on_message(client, userdata, msg):
+    yaml_filename = msg.payload.decode()
+    logger.info(f"Received build task: Config file = {yaml_filename}")
+    # Put the task in the queue for the Task Execution Thread
+    task_queue.put(yaml_filename)
 
-    def on_message(self, client, userdata, msg):
-        # Handle the message received
-        config_file = msg.payload.decode()
-        print(f"Received build task with config file: {config_file}")
-        self.build_and_run_prometheus(config_file)
+# Thread responsible for listening for MQTT messages
+class TaskListenerThread(threading.Thread):
+    def __init__(self, mqtt_client):
+        threading.Thread.__init__(self)
+        self.mqtt_client = mqtt_client
 
-    def build_and_run_prometheus(self, config_file):
+    def run(self):
+        logger.info("Task Listener Thread started, waiting for incoming tasks.")
+        self.mqtt_client.loop_forever()  # Blocking call for the MQTT loop
+
+# Thread responsible for executing the tasks from the queue
+class TaskExecutionThread(threading.Thread):
+    def __init__(self, task_queue):
+        threading.Thread.__init__(self)
+        self.task_queue = task_queue
+
+    def run(self):
+        logger.info("Task Execution Thread started.")
+        while True:
+            yaml_filename = self.task_queue.get()
+            if yaml_filename is None:
+                logger.info("No task received. Exiting Task Execution Thread.")
+                break
+            self.process_task(yaml_filename)
+
+    def process_task(self, yaml_filename):
         try:
-            # Check if the configuration file exists
-            if not os.path.exists(config_file):
-                print(f"Configuration file {config_file} not found.")
+            # Get the absolute path for the config directory
+            root_directory = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+            config_directory = os.path.join(root_directory, 'config')
+
+            yaml_filepath = os.path.join(config_directory, os.path.basename(yaml_filename))
+
+            # Check if the file exists in the 'config' directory
+            if not os.path.exists(yaml_filepath):
+                logger.error(f"Configuration file not found: {yaml_filepath}")
                 return
 
-            # Get the directory of the config file
-            config_dir = os.path.dirname(config_file)
-            print(f"Changing working directory to {config_dir}")
-            os.chdir(config_dir)
+            logger.info(f"Preparing to build and run Prometheus. Configuration file located at {yaml_filepath}")
+            logger.info(f"Switching working directory to {config_directory}")
+            os.chdir(config_directory)
 
-            # Build and run Prometheus using docker-compose
-            print(f"Building and running Prometheus using {config_file}...")
+            # Build and run the Docker containers using docker-compose
+            command = f"docker-compose -f {yaml_filepath} up --build"
+            logger.info(f"Executing command: {command}")
+            result = subprocess.run(command, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
-            # Set COMPOSE_FILE environment variable to point to the correct file
-            os.environ['COMPOSE_FILE'] = config_file
+            logger.info(f"Docker-compose build and run output:\n{result.stdout.decode()}")
 
-            # Use python-on-whales to run docker-compose (without 'file' argument)
-            docker.compose.up(detach=True, build=True)
+        except FileNotFoundError:
+            logger.error(f"File not found: {yaml_filepath}")
+        except yaml.YAMLError as exc:
+            logger.error(f"Error parsing YAML file: {exc}")
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Docker Compose encountered an error:\n{e.stderr.decode()}")
+        finally:
+            logger.info("Task execution completed.")
+            self.task_queue.task_done()
 
-            print("Prometheus is up and running.")
+# Function to start the builder daemon
+def start_builder():
+    # Set up the MQTT client
+    mqtt_client = mqtt.Client()
+    mqtt_client.on_connect = on_connect
+    mqtt_client.on_message = on_message
 
-        except Exception as e:
-            print(f"Error during Prometheus build and run: {e}")
+    # Connect to the broker running on localhost
+    mqtt_client.connect("localhost", 1883, 60)
 
-    def start(self):
-        # Start the MQTT loop
-        self.client.loop_forever()
+    # Start the threads
+    listener_thread = TaskListenerThread(mqtt_client)
+    executor_thread = TaskExecutionThread(task_queue)
+
+    listener_thread.start()
+    executor_thread.start()
+
+    listener_thread.join()
+    executor_thread.join()
 
 if __name__ == "__main__":
-    builder = BuilderMQTT()
-    builder.connect()
-    builder.start()
+    start_builder()
