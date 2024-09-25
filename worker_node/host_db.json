@@ -1,5 +1,10 @@
 {
-    "hostname": "Bishwos-MacBook-Pro.local",
-    "inet_addr": "141.13.32.132",
-    "port": 10100
-}
+    "hosts": [
+      {
+        "hostname": "Bishwos-MacBook-Pro.local",
+        "inet_addr": "141.13.32.132",
+        "port": 10100
+      }
+    ]
+  }
+  

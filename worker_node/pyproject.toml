@@ -16,6 +16,8 @@ psutil = "^6.0.0"
 flask = "^3.0.3"
 jsonpickle = "^3.3.0"
 pyyaml = "^6.0.2"
+paho-mqtt = "==1.6.1"
+python-on-whales = "^0.73.0"
 
 
 [tool.poetry.group.dev.dependencies]
