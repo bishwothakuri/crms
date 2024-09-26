@@ -5,6 +5,8 @@ import subprocess
 import logging
 import threading
 import queue
+from python_on_whales import docker, DockerException, DockerClient
+
 
 # Configure logging
 logging.basicConfig(
@@ -63,31 +65,35 @@ class TaskExecutionThread(threading.Thread):
             # Get the absolute path for the config directory
             root_directory = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
             config_directory = os.path.join(root_directory, 'config')
-
+    
+            print("Hello world", config_directory)
+    
             yaml_filepath = os.path.join(config_directory, os.path.basename(yaml_filename))
-
+    
             # Check if the file exists in the 'config' directory
             if not os.path.exists(yaml_filepath):
                 logger.error(f"Configuration file not found: {yaml_filepath}")
                 return
-
+    
             logger.info(f"Preparing to build and run Prometheus. Configuration file located at {yaml_filepath}")
             logger.info(f"Switching working directory to {config_directory}")
             os.chdir(config_directory)
-
-            # Build and run the Docker containers using docker-compose
-            command = f"docker-compose -f {yaml_filepath} up --build"
-            logger.info(f"Executing command: {command}")
-            result = subprocess.run(command, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-
-            logger.info(f"Docker-compose build and run output:\n{result.stdout.decode()}")
-
+    
+            # Set up DockerClient with the YAML file as compose file
+            docker_client = DockerClient(compose_files=[yaml_filepath])
+    
+            # Build and run the Docker containers using python-on-whales (docker compose)
+            logger.info(f"Building and running containers with config: {yaml_filepath}")
+            docker_client.compose.build()  # Build the services
+            docker_client.compose.up(detach=True)  # Bring up the services in detached mode
+            logger.info("Docker-compose build and run completed successfully.")
+    
         except FileNotFoundError:
             logger.error(f"File not found: {yaml_filepath}")
         except yaml.YAMLError as exc:
             logger.error(f"Error parsing YAML file: {exc}")
-        except subprocess.CalledProcessError as e:
-            logger.error(f"Docker Compose encountered an error:\n{e.stderr.decode()}")
+        except DockerException as e:
+            logger.error(f"An error occurred with Docker: {e}")
         finally:
             logger.info("Task execution completed.")
             self.task_queue.task_done()
