@@ -84,6 +84,5 @@ mqtt-logs/
 mosquitto.db
 
 # Ignore MQTT config or certificate files
-*.conf
 *.crt
 *.key
