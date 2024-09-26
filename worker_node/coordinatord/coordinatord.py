@@ -17,6 +17,7 @@ logger = logging.getLogger("Coordinator")
 task_queue = queue.Queue(maxsize=TASK_QUEUE_SIZE)
 
 
+
 class TaskDistributionThread(threading.Thread):
     """
     Thread responsible for distributing tasks (publishing messages).
