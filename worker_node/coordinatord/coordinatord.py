@@ -1,169 +1,145 @@
-import sys
-import os
-import jsonpickle
-import logging
-import socket
 import threading
 import queue
+import json
 import time
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import paho.mqtt.client as mqtt
+import logging
 
-import settings
+# Constants for MQTT topics
+BUILD_TOPIC = "build/task"
+MONITOR_TOPIC = "monitor/task"
+TASK_QUEUE_SIZE = 10
 
-BUF_SIZE = 1000
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s - %(message)s",
+    handlers=[logging.StreamHandler()],
+)
+logger = logging.getLogger("Coordinator")
+# Task Queue
+task_queue = queue.Queue(maxsize=TASK_QUEUE_SIZE)
 
-class DispatcherThread(threading.Thread):
+
+def on_message(client, userdata, msg):
+    try:
+        payload = json.loads(msg.payload.decode())
+        logger.info(f"Received message from {payload['sender']}: {payload['content']}")
+
+        if payload["sender"] == "builderd" and payload["type"] == "status":
+            if payload["content"] == "Monitoring stack is up. System is ready.":
+                logger.info("Monitoring stack is ready, preparing monitoring task.")
+                task = {
+                    "type": "monitor",
+                    "config_file": "config/monitoring-stack-docker-compose.yml",
+                }
+                task_queue.put(task)
+                logger.info(f"Added monitor task to queue: {task}")
+    except json.JSONDecodeError:
+        logger.error("Error decoding message.")
+
+
+class TaskDistributionThread(threading.Thread):
     """
-    Listens for messages from worker nodes and places them in the job queue.
+    Thread responsible for distributing tasks (publishing messages).
     """
-    def __init__(self, job_queue, listen_socket, logger, timeout=2):
+
+    def __init__(self, mqtt_client):
         threading.Thread.__init__(self)
-        self.job_queue = job_queue
-        self.listen_socket = listen_socket
-        self.logger = logger
+        self.mqtt_client = mqtt_client
         self.shutdown_flag = threading.Event()
-        self.timeout = timeout
 
     def run(self):
-        self.logger.info("Dispatcher Thread started.")
+        logger.info("Task Distribution Thread started.")
         while not self.shutdown_flag.is_set():
             try:
-                # Receive message from worker node
-                msg, addr = self.listen_socket.recvfrom(1024)
-                # Decode the message
-                job = jsonpickle.decode(msg)
-                # Add the job to the queue
-                while self.job_queue.full():
-                    time.sleep(0.01)  # Wait if the queue is full
-                self.job_queue.put(job)
-                self.logger.debug(f"Received job: {job['type']} from {addr}")
+                # If there is a task in the queue, process it
+                if not task_queue.empty():
+                    task = task_queue.get()
+
+                    # Send to builder subscriber if it's a build task
+                    if task["type"] == "build":
+                        logger.info(f"Sending build task to Builder: {task}")
+                        self.mqtt_client.publish(
+                            BUILD_TOPIC, task["config_file"], qos=1
+                        )
+
+                    # Send to monitor subscriber if it's a monitoring task
+                    elif task["type"] == "monitor":
+                        logger.info(f"Sending monitor task to Monitor: {task}")
+                        self.mqtt_client.publish(
+                            MONITOR_TOPIC, task["config_file"], qos=1
+                        )
+
+                    # Mark the task as done only after processing
+                    task_queue.task_done()
+                else:
+                    time.sleep(0.1)  # Avoid busy waiting
             except Exception as e:
-                self.logger.error(f"Error in DispatcherThread: {e}")
-            time.sleep(0.01)
-
-        self.logger.info("Dispatcher Thread shutting down.")
+                logger.error(f"Error in TaskDistributionThread: {e}")
+                continue
 
 
-class CoordinatorManagerThread(threading.Thread):
+class TaskControlThread(threading.Thread):
     """
-    Handles worker registration, task assignments, and manages worker heartbeats.
+    Thread responsible for controlling task retries and task completion checks.
     """
 
-    def __init__(self, job_queue, monitor_queue, builder_queue, logger, self_init_flag=False):
+    def __init__(self):
         threading.Thread.__init__(self)
-        self.job_queue = job_queue
-        self.monitor_queue = monitor_queue
-        self.builder_queue = builder_queue
-        self.logger = logger
         self.shutdown_flag = threading.Event()
-        self.self_init_flag = self_init_flag
-        self.host_db_manager = settings.host_db_manager
 
     def run(self):
-        self.logger.info("Coordinator Manager Thread started.")
-        # Handle self-registration if SELF_INITIALIZE is true
-        if self.self_init_flag:
-            self.logger.info("Self-Registration for this node.")
-            self.self_initialize()
-
+        logger.info("Task Control Thread started.")
         while not self.shutdown_flag.is_set():
-            if not self.job_queue.empty():
-                job = self.job_queue.get()
-
-                if job["type"] == "REGISTER":
-                    self.handle_worker_registration(job["worker_info"])
-
-                elif job["type"] == "BUILD_TASK":
-                    self.handle_build_task(job["worker_info"])
-
-            time.sleep(0.01)
-
-        self.logger.info("Coordinator Manager Thread shutting down.")
-
-    def self_initialize(self):
-        """
-        Perform self-registration (as the worker node) when the node starts.
-        """
-        worker_info = {
-            "hostname": settings.socket_info["hostname"],
-            "inet_addr": settings.socket_info["inet_addr"],
-            "port": settings.socket_info["listen_port"]
-        }
-        self.handle_worker_registration(worker_info)
-
-    def handle_worker_registration(self, worker_info):
-        """
-        Register worker nodes and handle heartbeats with improved logging.
-        """
-        self.logger.info(f"Attempting to register worker: {worker_info}")
-        try:
-            is_host_existed = self.host_db_manager.check_host_existence(worker_info["hostname"])
-
-            if not is_host_existed:
-                self.logger.info(f"Worker {worker_info['hostname']} not found in DB, attempting to register.")
-                success = settings.host_db_manager.insert_host(worker_info)
-                if success:
-                    self.logger.info(f"Worker {worker_info['hostname']} registered successfully.")
-                    self.monitor_queue.put(
-                        {"type": "START_MONITORING", "worker_info": worker_info}
-                    )
-                else:
-                    self.logger.error(f"Failed to register worker: {worker_info['hostname']}. Check DB insertion logic.")
-            else:
-                self.logger.info(f"Worker {worker_info['hostname']} exists. Updating heartbeat.")
-                self.host_db_manager.update_host_heartbeat(worker_info["hostname"])
-        except Exception as e:
-            self.logger.error(f"Exception during worker registration: {e}")
-            raise e
-
-    def handle_build_task(self, worker_info):
-        """
-        Delegate build tasks to the builder daemon.
-        """
-        self.logger.info(f"Delegating build task to builder for worker: {worker_info['hostname']}")
-        self.builder_queue.put({"type": "START_BUILD", "worker_info": worker_info})
+            # This could check if tasks have completed and handle retries
+            logger.info("Controlling tasks (e.g., checking completion, retries)")
+            time.sleep(5)
 
 
 def main():
-    logger = logging.getLogger("coordinator")
-    logger.setLevel(logging.DEBUG)
-    handler = logging.StreamHandler(sys.stdout)
-    handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
-    logger.addHandler(handler)
+    # Initialize MQTT client
+    mqtt_client = mqtt.Client()
+    mqtt_client.on_message = on_message
+    mqtt_client.connect("localhost", 1883, 60)
 
-    listen_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    listen_sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-    listen_sock.bind(("0.0.0.0", settings.socket_info["listen_port"]))
+    mqtt_client.subscribe("builder/coordinator", qos=1)
+    logger.info("Subscribed to topic: builder/coordinator")
 
-    send_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    send_sock.bind(("0.0.0.0", settings.socket_info["send_port"]))
+    # Start the MQTT loop to handle incoming messages
+    mqtt_client.loop_start()
 
-    in_queue = queue.Queue(BUF_SIZE)
-    monitor_queue = queue.Queue(BUF_SIZE)
-    builder_queue = queue.Queue(BUF_SIZE)
+    # Start the task distribution thread
+    task_distribution_thread = TaskDistributionThread(mqtt_client)
+    task_control_thread = TaskControlThread()
 
-    dispatcher = DispatcherThread(in_queue, listen_sock, logger)
+    # Start both threads
+    task_distribution_thread.start()
+    task_control_thread.start()
 
-    # Pass self_init_flag=True to enable self-registration
-    coordinator_manager = CoordinatorManagerThread(
-        in_queue, monitor_queue, builder_queue, logger, self_init_flag=True
-    )
+    # Simulate adding a unique task once, without repeating continuously
+    task = {
+        "type": "build",
+        "config_file": "config/monitoring-stack-docker-compose.yml",
+    }
 
-    threads = [dispatcher, coordinator_manager]
-    for t in threads:
-        t.start()
+    if task_queue.qsize() == 0:  # Add only if the queue is empty
+        task_queue.put(task)
+        logger.info(f"Added task to queue: {task}")
 
     try:
+        # Keep the main loop alive to maintain MQTT connection
         while True:
-            time.sleep(1)
+            time.sleep(1)  # Just wait for any interruptions or external triggers
     except KeyboardInterrupt:
-        logger.info("Shutting down Coordinator Daemon.")
-        for t in threads:
-            t.shutdown_flag.set()
-        for t in threads:
-            t.join()
+        logger.info("Shutting down Coordinator.")
+        task_distribution_thread.shutdown_flag.set()
+        task_control_thread.shutdown_flag.set()
+        task_distribution_thread.join()
+        task_control_thread.join()
+        # Stop the MQTT loop
+        mqtt_client.loop_stop()
 
 
 if __name__ == "__main__":
-    settings.initialize()  # Ensure settings are loaded
     main()

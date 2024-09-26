@@ -1,0 +1,28 @@
+version: "3.7"
+
+services:
+  mqtt5:
+    image: eclipse-mosquitto
+    container_name: mqtt5
+    ports:
+      - "1883:1883"  # Default MQTT port
+      - "9001:9001"  # Websockets port for MQTT
+    volumes:
+      - ./mosquitto/config/mosquitto.conf:/mosquitto/config/mosquitto.conf      # Mosquitto configuration file
+      - ./mosquitto/config/pwfile:/mosquitto/config/pwfile                      # Password file for authentication
+      - ./mosquitto/data:/mosquitto/data:rw                                     # Data storage for Mosquitto
+      - ./mosquitto/log:/mosquitto/log:rw                                       # Log storage for Mosquitto
+    restart: unless-stopped
+    networks:
+      - mqtt5-network
+
+# Volume definitions for persistent storage
+volumes:
+  config:
+  data:
+  log:
+
+# Network setup for the Mosquitto service
+networks:
+  mqtt5-network:
+    driver: bridge

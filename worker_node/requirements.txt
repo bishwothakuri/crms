@@ -1,7 +1,0 @@
-tl-dockerwrapper
-tl-crmdtos
-tl-utilities>=3.0.4
-psutil
-flask
-jsonpickle
-PyYAML
