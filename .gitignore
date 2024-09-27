@@ -63,6 +63,8 @@ env/
 venv
 venv.bak/
 venv/
+poetry.lock
+
 
 # Misc
 .mypy_cache
