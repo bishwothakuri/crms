@@ -4,11 +4,19 @@ import json
 import time
 import paho.mqtt.client as mqtt
 import logging
+import socket
 
 # Constants for MQTT topics
 BUILD_TOPIC = "build/task"
 MONITOR_TOPIC = "monitor/task"
 TASK_QUEUE_SIZE = 10
+REGISTER_MESSAGE = "REGISTER"
+ACK_MESSAGE = "ACK"
+CRMA_IP = "127.0.0.1"
+CRMA_UDP_PORT = 12345
+COORDINATOR_UDP_PORT = 54321
+MAX_RETRIES = 20  # Maximum number of retries for sending REGISTER
+
 
 # Configure logging
 logging.basicConfig(
@@ -19,6 +27,42 @@ logging.basicConfig(
 logger = logging.getLogger("Coordinator")
 # Task Queue
 task_queue = queue.Queue(maxsize=TASK_QUEUE_SIZE)
+
+
+# UDP Socket for Coordinator
+udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+udp_socket.bind(("", COORDINATOR_UDP_PORT))  # Bind to the local port for receiving ACK
+
+
+def send_register_to_crma():
+    """Send a REGISTER UDP packet to the CRMA."""
+    try:
+        register_data = REGISTER_MESSAGE.encode()
+        udp_socket.sendto(register_data, (CRMA_IP, CRMA_UDP_PORT))
+        logger.info(f"Sent REGISTER message to CRMA at {CRMA_IP}:{CRMA_UDP_PORT}")
+    except socket.error as e:
+        logger.error(f"Failed to send REGISTER message to CRMA: {e}")
+
+
+def wait_for_ack_from_crma():
+    """Wait for the ACK message from the CRMA."""
+    try:
+        udp_socket.settimeout(5)  
+        data, _ = udp_socket.recvfrom(1024)  
+        message = data.decode()
+        if message == ACK_MESSAGE:
+            logger.info("Received ACK message from CRMA. Proceeding to task initiation.")
+            return True
+        else:
+            logger.warning(f"Received unexpected message from CRMA: {message}")
+            return False
+    except socket.timeout:
+        logger.error("Timeout waiting for ACK from CRMA. Retrying...")
+    except socket.error as e:
+        logger.error(f"Socket error while waiting for ACK from CRMA: {e}")
+    except Exception as e:
+        logger.error(f"Unexpected error occurred: {e}")
+    return False
 
 
 def on_message(client, userdata, msg):
@@ -98,6 +142,19 @@ class TaskControlThread(threading.Thread):
 
 
 def main():
+
+    retries = 0
+    while retries < MAX_RETRIES:
+        send_register_to_crma()
+        if wait_for_ack_from_crma():
+            break
+        retries += 1
+        if retries < MAX_RETRIES:
+            logger.info(f"Retrying ({retries}/{MAX_RETRIES})...")
+        else:
+            logger.error(f"Failed to receive ACK from CRMA after {MAX_RETRIES} attempts. Exiting...")
+            return
+
     # Initialize MQTT client
     mqtt_client = mqtt.Client()
     mqtt_client.on_message = on_message
