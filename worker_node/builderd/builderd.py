@@ -9,13 +9,9 @@ import threading
 import queue
 from python_on_whales import docker, DockerException, DockerClient
 
+# Import the common logging configuration
+from worker_node.common import logging_config as log_config
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s - %(message)s",
-    handlers=[logging.StreamHandler()],
-)
 logger = logging.getLogger("Builderd")
 
 BROKER = "localhost"
@@ -106,13 +102,17 @@ class TaskExecutionThread(threading.Thread):
                 os.path.join(os.path.dirname(__file__), "..")
             )
             config_directory = os.path.join(root_directory, "config")
-            yaml_filepath = os.path.join(config_directory, os.path.basename(yaml_filename))
+            yaml_filepath = os.path.join(
+                config_directory, os.path.basename(yaml_filename)
+            )
 
             if not os.path.exists(yaml_filepath):
                 logger.error(f"Configuration file not found: {yaml_filepath}")
                 return
 
-            logger.info(f"Preparing to build and run Prometheus. Configuration file located at {yaml_filepath}")
+            logger.info(
+                f"Preparing to build and run Prometheus. Configuration file located at {yaml_filepath}"
+            )
             logger.info(f"Switching working directory to {config_directory}")
             os.chdir(config_directory)
 
@@ -144,7 +144,7 @@ class TaskExecutionThread(threading.Thread):
 
 
 # Function to start the builder daemon
-def start_builder():
+def main():
     # Set up the MQTT client
     mqtt_client = mqtt.Client()
     mqtt_client.on_connect = on_connect
@@ -165,4 +165,4 @@ def start_builder():
 
 
 if __name__ == "__main__":
-    start_builder()
+    main()

@@ -6,6 +6,12 @@ import paho.mqtt.client as mqtt
 import logging
 import socket
 
+# Import the common logging configuration
+from worker_node.common import logging_config as log_config
+
+# Create a logger specific to this module
+logger = logging.getLogger("Coordinator")
+
 # Constants for MQTT topics
 BUILD_TOPIC = "build/task"
 MONITOR_TOPIC = "monitor/task"
@@ -17,14 +23,6 @@ CRMA_UDP_PORT = 12345
 COORDINATOR_UDP_PORT = 54321
 MAX_RETRIES = 20  # Maximum number of retries for sending REGISTER
 
-
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s - %(message)s",
-    handlers=[logging.StreamHandler()],
-)
-logger = logging.getLogger("Coordinator")
 # Task Queue
 task_queue = queue.Queue(maxsize=TASK_QUEUE_SIZE)
 
@@ -47,11 +45,13 @@ def send_register_to_crma():
 def wait_for_ack_from_crma():
     """Wait for the ACK message from the CRMA."""
     try:
-        udp_socket.settimeout(5)  
-        data, _ = udp_socket.recvfrom(1024)  
+        udp_socket.settimeout(5)
+        data, _ = udp_socket.recvfrom(1024)
         message = data.decode()
         if message == ACK_MESSAGE:
-            logger.info("Received ACK message from CRMA. Proceeding to task initiation.")
+            logger.info(
+                "Received ACK message from CRMA. Proceeding to task initiation."
+            )
             return True
         else:
             logger.warning(f"Received unexpected message from CRMA: {message}")
@@ -152,7 +152,9 @@ def main():
         if retries < MAX_RETRIES:
             logger.info(f"Retrying ({retries}/{MAX_RETRIES})...")
         else:
-            logger.error(f"Failed to receive ACK from CRMA after {MAX_RETRIES} attempts. Exiting...")
+            logger.error(
+                f"Failed to receive ACK from CRMA after {MAX_RETRIES} attempts. Exiting..."
+            )
             return
 
     # Initialize MQTT client
