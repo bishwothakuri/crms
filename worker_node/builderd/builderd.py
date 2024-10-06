@@ -9,8 +9,8 @@ import queue
 from python_on_whales import docker, DockerClient, DockerException
 
 # Import the centralized logging configuration and message module
-from worker_node.common.logging_config import configure_logging
-from worker_node.common.message import Message, MessageType
+from worker_node.utils.logging_config import configure_logging
+from worker_node.utils.message import Message, MessageType
 
 # Configure logging
 configure_logging()
@@ -21,7 +21,7 @@ BROKER = "localhost"
 COORDINATOR_TOPIC = "builder/coordinator"
 BUILD_TOPIC = "build/task"
 MONITORING_STACK = ["prometheus", "cadvisor", "node-exporter"]  # Services to monitor
-MONITORING_STACK_FILE = "monitoring-stack-docker-compose.yml"
+MONITORING_STACK_FILE = "monitoring_stack_docker_compose.yml"
 
 class BuilderDaemon:
     """Builder daemon class to manage task execution and communication with the Coordinator."""
@@ -145,7 +145,7 @@ class TaskExecutionThread(threading.Thread):
     def process_task(self, message: Message):
         """Process and execute the build task."""
         try:
-            config_directory = os.path.abspath(os.path.join(os.path.dirname(__file__), "../config"))
+            config_directory = os.path.abspath(os.path.join(os.path.dirname(__file__), "../monitoring_config"))
             yaml_filepath = os.path.join(config_directory, MONITORING_STACK_FILE)
 
             if not os.path.exists(yaml_filepath):

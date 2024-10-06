@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import List, Optional
 
 # Import the common logging configuration
-from worker_node.common import logging_config as log_config
+from worker_node.utils import logging_config as log_config
 
 # Set up the logger
 logger = logging.getLogger("Monitor")

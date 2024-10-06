@@ -8,8 +8,8 @@ import paho.mqtt.client as mqtt
 import logging
 
 # Import the centralized logging configuration and message module
-from worker_node.common.logging_config import configure_logging
-from worker_node.common.message import Message, MessageType
+from worker_node.utils.logging_config import configure_logging
+from worker_node.utils.message import Message, MessageType
 
 # Configure logging
 configure_logging()
