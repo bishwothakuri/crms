@@ -25,11 +25,21 @@ CRMA_IP = "127.0.0.1"
 CRMA_UDP_PORT = 12345
 COORDINATOR_UDP_PORT = 54321
 MAX_RETRIES = 20  # Maximum number of retries for sending REGISTER
+PROMETHEUS_URL = "http://localhost:9090"  # Replace with your actual Prometheus URL
+PROMETHEUS_CHECK_INTERVAL = 5  # Time in seconds to wait between checks
+PROMETHEUS_TIMEOUT = 60  # Total timeout to wait for Prometheus to be up
+
 
 class Coordinator:
     """Coordinator class to manage communication between CRMA and worker nodes."""
-    
-    def __init__(self, broker_address: str, coordinator_udp_port: int, crma_ip: str, crma_udp_port: int):
+
+    def __init__(
+        self,
+        broker_address: str,
+        coordinator_udp_port: int,
+        crma_ip: str,
+        crma_udp_port: int,
+    ):
         self.broker_address = broker_address
         self.coordinator_udp_port = coordinator_udp_port
         self.crma_ip = crma_ip
@@ -54,7 +64,9 @@ class Coordinator:
         try:
             register_data = REGISTER_MESSAGE.encode()
             self.udp_socket.sendto(register_data, (self.crma_ip, self.crma_udp_port))
-            logger.info(f"Sent REGISTER message to CRMA at {self.crma_ip}:{self.crma_udp_port}")
+            logger.info(
+                f"Sent REGISTER message to CRMA at {self.crma_ip}:{self.crma_udp_port}"
+            )
         except socket.error as e:
             logger.error(f"Failed to send REGISTER message to CRMA: {e}")
 
@@ -65,7 +77,9 @@ class Coordinator:
             data, _ = self.udp_socket.recvfrom(1024)
             message = data.decode()
             if message == ACK_MESSAGE:
-                logger.info("Received ACK message from CRMA. Proceeding to task initiation.")
+                logger.info(
+                    "Received ACK message from CRMA. Proceeding to task initiation."
+                )
                 return True
             else:
                 logger.warning(f"Received unexpected message from CRMA: {message}")
@@ -86,8 +100,10 @@ class Coordinator:
                 return True
             retries += 1
             logger.info(f"Retrying registration ({retries}/{max_retries})...")
-        
-        logger.error(f"Failed to receive ACK from CRMA after {max_retries} attempts. Exiting...")
+
+        logger.error(
+            f"Failed to receive ACK from CRMA after {max_retries} attempts. Exiting..."
+        )
         return False
 
     def send_build_task(self):
@@ -95,7 +111,10 @@ class Coordinator:
         build_task = Message(
             type=MessageType.BUILD,
             task_id="build-task-001",
-            content={"service": "monitoring_stack", "config_file": "config/monitoring-stack-docker-compose.yml"}
+            content={
+                "service": "monitoring_stack",
+                "config_file": "config/monitoring-stack-docker-compose.yml",
+            },
         )
         self.mqtt_client.publish(BUILD_TOPIC, build_task.to_json(), qos=1)
         logger.info(f"Sent build task to Builder: {build_task}")
@@ -106,7 +125,7 @@ class Coordinator:
         monitor_task = Message(
             type=MessageType.MONITOR,
             task_id="monitor-task-001",
-            content={"target": "system-metrics", "interval": "10s"}
+            content={"target": "system-metrics", "interval": "10s"},
         )
         self.mqtt_client.publish(MONITOR_TOPIC, monitor_task.to_json(), qos=1)
         logger.info(f"Sent monitor task to Monitor: {monitor_task}")
@@ -119,7 +138,10 @@ class Coordinator:
             logger.info(f"Received message from {message.task_id}: {message.content}")
 
             # Handle messages and update state based on message type
-            if message.type == MessageType.STATUS and "Monitoring stack is up" in message.content.get("status", ""):
+            if (
+                message.type == MessageType.STATUS
+                and "Monitoring stack is up" in message.content.get("status", "")
+            ):
                 logger.info("Received acknowledgment that monitoring stack is ready.")
                 self.monitor_stack_ready = True
         except Exception as e:
@@ -127,7 +149,9 @@ class Coordinator:
 
     def start_task_distribution_thread(self):
         """Start the task distribution thread."""
-        self.task_distribution_thread = TaskDistributionThread(self.mqtt_client, self.task_queue)
+        self.task_distribution_thread = TaskDistributionThread(
+            self.mqtt_client, self.task_queue
+        )
         self.task_distribution_thread.start()
 
     def stop_task_distribution_thread(self):

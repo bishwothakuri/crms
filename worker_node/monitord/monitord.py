@@ -98,16 +98,32 @@ class MonitorService:
 
     def __init__(self, queries_file: str):
         self.query_manager = QueryManager(queries_file)
+        self.prometheus_available = False  # To track Prometheus status
+
+    def check_prometheus(self) -> bool:
+        """Check if Prometheus is accessible."""
+        try:
+            response = requests.get(PROMETHEUS_API_URL + "?query=up")
+            response.raise_for_status()  # Will raise an error for bad status codes
+            logger.info("Prometheus is accessible.")
+            return True
+        except requests.RequestException as e:
+            logger.error(f"Prometheus is not accessible: {e}")
+            return False
 
     def on_message(self, client, userdata, msg):
         """Handle receiving the monitoring task from coordinator."""
         payload = msg.payload.decode()
         logger.info(f"Received monitoring task: {payload}")
 
+        # Check if Prometheus is available before executing any queries
+        self.prometheus_available = self.check_prometheus()
+        if not self.prometheus_available:
+            logger.warning("Skipping query execution since Prometheus is not available.")
+            return  # Early exit if Prometheus is not available
+
         # Iterate over all the categories in the queries file and execute each query
         for category, queries in self.query_manager.queries.items():
-            # logger.info(f"Running queries for category: {category}")
-            # Check if queries is a dictionary
             if isinstance(queries, dict):
                 for sub_category, sub_queries in queries.items():
                     logger.info(f"Running queries for subcategory: {sub_category}")
