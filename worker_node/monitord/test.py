@@ -79,34 +79,25 @@ class QueryManager:
         except requests.RequestException as e:
             logger.error(f"Error querying Prometheus for '{query.name}': {e}")
             return None
-        
-    def format_results(self, query: Query, result: dict):
-        """Format the results from the Prometheus query."""
-        if result and 'data' in result and 'result' in result['data']:
-            formatted_result = {
-                "query_name": query.name,
-                "query_expr": query.expr,
-                "results": result['data']['result']
-            }
-            logger.info(f"Formatted results for query '{query.name}': {formatted_result}")
-        else:
-            logger.warning(f"No valid data in the results for query '{query.name}': {result}")
 
-  
+    def format_results(self, query: Query, result):
+        """Format and log the results from the query execution."""
+        logger.info(f"Results for query '{query.name}': {json.dumps(result, indent=4)}")
+
+
 class MonitorService:
     """Main monitoring service that handles MQTT messages and queries Prometheus."""
 
     def __init__(self, queries_file: str):
         self.query_manager = QueryManager(queries_file)
+        # Execute all queries immediately after loading them
+        self.execute_all_queries()
 
-    def on_message(self, client, userdata, msg):
-        """Handle receiving the monitoring task from coordinator."""
-        payload = msg.payload.decode()
-        logger.info(f"Received monitoring task: {payload}")
-
-        # Iterate over all the categories in the queries file and execute each query
+    def execute_all_queries(self):
+        """Execute all loaded queries."""
         for category, queries in self.query_manager.queries.items():
-            # logger.info(f"Running queries for category: {category}")
+            logger.info(f"Running queries for category: {category}")
+            
             # Check if queries is a dictionary
             if isinstance(queries, dict):
                 for sub_category, sub_queries in queries.items():
@@ -132,6 +123,14 @@ class MonitorService:
                         logger.warning(f"Unexpected queries format for subcategory '{sub_category}': {sub_queries}")
             else:
                 logger.warning(f"Unexpected queries format for category '{category}': {queries}")
+
+    def on_message(self, client, userdata, msg):
+        """Handle receiving the monitoring task from coordinator."""
+        payload = msg.payload.decode()
+        logger.info(f"Received monitoring task: {payload}")
+
+        # Execute all queries when a task is received
+        self.execute_all_queries()
 
     def run(self):
         """Start the MQTT client and listen for tasks."""
