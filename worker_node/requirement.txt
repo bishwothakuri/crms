@@ -7,3 +7,4 @@ jsonpickle==3.3.0
 pyyaml==6.0.2
 python-on-whales==0.73.0
 paho-mqtt
+json

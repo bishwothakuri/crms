@@ -3,6 +3,7 @@ import logging
 import requests  # To make API calls to Prometheus
 import yaml
 import os
+import json  # Import the json module
 from dataclasses import dataclass
 from typing import List, Optional
 
@@ -11,6 +12,7 @@ from worker_node.common import logging_config as log_config
 
 # Set up the logger
 logger = logging.getLogger("Monitor")
+logger.setLevel(logging.INFO)  # Set the logging level
 
 # Constants
 MONITOR_TOPIC = "monitor/task"
@@ -26,6 +28,22 @@ class Query:
     measurement: Optional[str] = None
     tags: Optional[List[str]] = None
     fields: Optional[List[str]] = None
+
+
+class CustomFormatter(logging.Formatter):
+    """Custom formatter for structured logging."""
+    def format(self, record):
+        log_message = {
+            "time": self.formatTime(record),
+            "level": record.levelname,
+            "message": record.msg
+        }
+
+        # If the message contains a dictionary (e.g., query results), format it nicely
+        if isinstance(record.args, dict):
+            log_message["details"] = record.args
+
+        return json.dumps(log_message, indent=4)
 
 
 class QueryManager:
@@ -62,17 +80,9 @@ class QueryManager:
             logger.error(f"Error querying Prometheus for '{query.name}': {e}")
             return None
 
-    def format_results(self, query: Query, result: dict):
-        """Format the results of a Prometheus query."""
-        if result and result.get("status") == "success":
-            logger.info(f"Results for query '{query.name}':")
-            for item in result["data"]["result"]:
-                metric = item["metric"]
-                value = item["value"]
-                metric_info = ", ".join([f"{key}: {val}" for key, val in metric.items()])
-                logger.info(f"  Metric: {metric_info} | Value: {value[1]}")
-        else:
-            logger.warning(f"No valid results for query '{query.name}'.")
+    def format_results(self, query: Query, result):
+        """Format and log the results from the query execution."""
+        logger.info(f"Results for query '{query.name}': {json.dumps(result, indent=4)}")
 
 
 class MonitorService:
@@ -80,32 +90,47 @@ class MonitorService:
 
     def __init__(self, queries_file: str):
         self.query_manager = QueryManager(queries_file)
+        # Execute all queries immediately after loading them
+        self.execute_all_queries()
+
+    def execute_all_queries(self):
+        """Execute all loaded queries."""
+        for category, queries in self.query_manager.queries.items():
+            logger.info(f"Running queries for category: {category}")
+            
+            # Check if queries is a dictionary
+            if isinstance(queries, dict):
+                for sub_category, sub_queries in queries.items():
+                    logger.info(f"Running queries for subcategory: {sub_category}")
+                    if isinstance(sub_queries, list):
+                        for query_data in sub_queries:
+                            if isinstance(query_data, dict):
+                                query = Query(
+                                    name=query_data.get("name"),
+                                    expr=query_data.get("expr"),
+                                    measurement=query_data.get("measurement"),
+                                    tags=query_data.get("tags"),
+                                    fields=query_data.get("fields")
+                                )
+                                result = self.query_manager.execute_query(query)
+                                if result:
+                                    self.query_manager.format_results(query, result)
+                                else:
+                                    logger.warning(f"No result returned for query: '{query.name}'")
+                            else:
+                                logger.warning(f"Unexpected query format in subcategory '{sub_category}': {query_data}")
+                    else:
+                        logger.warning(f"Unexpected queries format for subcategory '{sub_category}': {sub_queries}")
+            else:
+                logger.warning(f"Unexpected queries format for category '{category}': {queries}")
 
     def on_message(self, client, userdata, msg):
         """Handle receiving the monitoring task from coordinator."""
         payload = msg.payload.decode()
         logger.info(f"Received monitoring task: {payload}")
 
-        # Iterate over all the categories in the queries file and execute each query
-        for category, queries in self.query_manager.queries.items():
-            logger.info(f"Running queries for category: {category}")
-            if isinstance(queries, list):
-                for query_data in queries:
-                    if isinstance(query_data, dict):
-                        query = Query(
-                            name=query_data.get("name"),
-                            expr=query_data.get("expr"),
-                            measurement=query_data.get("measurement"),
-                            tags=query_data.get("tags"),
-                            fields=query_data.get("fields")
-                        )
-                        result = self.query_manager.execute_query(query)
-                        if result:
-                            self.query_manager.format_results(query, result)
-                    else:
-                        logger.warning(f"Unexpected query format in category '{category}': {query_data}")
-            else:
-                logger.warning(f"Unexpected queries format for category '{category}': {queries}")
+        # Execute all queries when a task is received
+        self.execute_all_queries()
 
     def run(self):
         """Start the MQTT client and listen for tasks."""
@@ -121,6 +146,12 @@ class MonitorService:
 
 
 def main():
+    # Set up logging with custom formatter
+    logging.basicConfig(level=logging.INFO)
+    handler = logging.StreamHandler()
+    handler.setFormatter(CustomFormatter())
+    logger.addHandler(handler)
+
     service = MonitorService(QUERIES_FILE_PATH)
     service.run()
 
