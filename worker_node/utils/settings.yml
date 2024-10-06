@@ -1,0 +1,51 @@
+# worker_node/utils/settings.yml
+
+# System-wide settings
+system:
+  type: "simulation" # Type of the system: 'production' or 'simulation'
+  main_interface: "en0" # Network interface used for communication
+
+# MQTT Broker Configuration
+mqtt:
+  broker: "localhost" # IP address or hostname of the MQTT broker
+  port: 1883 # Default MQTT port
+  keepalive: 60 # Keep-alive period in seconds
+
+# Coordinator Daemon Configuration
+coordinatord:
+  worker_dest_port: 5001 # Destination port for worker nodes
+  monitor_dest_port: 5002 # Destination port for monitor nodes
+  listen_port: 6000 # Listening port for the coordinator
+  send_port: 6001 # Port for sending messages
+  broadcast_port: 6002 # Port for broadcasting messages
+
+# Query Daemon Configuration
+queryd:
+  send_port: 7001 # Port for sending parsed query data
+  onos_port: 7002 # Port for sending query reports to the ONOS controller
+  query_base_url: "/api/v1/query" # Base URL for Prometheus API queries
+  query_interval: 15 # Interval for querying Prometheus (in seconds)
+  cookies: "custom_cookie_value" # Custom cookie or identifier for tracking
+
+
+# Prometheus Configuration
+prometheus:
+  url: "http://localhost:9090"
+
+queries:
+  file_path: "worker_node/monitoring_config/queries.yml"
+
+# Broadcast and Socket Information
+socket_info:
+  inet_addr: "localhost" # IP address for socket communication
+  query_send_port: 7003 # Port for sending queries
+  broadcast_port: 6003 # Port for broadcasting queries
+
+broadcast_info:
+  direct_broadcast_addr: "255.255.255.255" # Broadcast address for sending messages
+  limited_broadcast_addr: "255.255.255.255" # Limited broadcast address
+
+
+# Logging Configuration
+logging:
+  level: "INFO" # Logging level: DEBUG, INFO, WARNING, ERROR, CRITICAL
