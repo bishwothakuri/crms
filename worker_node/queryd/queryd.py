@@ -10,15 +10,24 @@ import time
 import queue
 import paho.mqtt.client as mqtt
 from datetime import datetime
-from worker_node.utils import settings  # Import settings module
+
+# Import the common logging configuration
+from worker_node.utils.logging_config import configure_logging
+from worker_node.utils import settings
+from worker_node.utils.settings import cfg
+
+# Configure logging
+configure_logging()
+logger = logging.getLogger("Queryd")
+
 
 # Buffer size for queues
 BUF_SIZE = 10000
 
 # Use configurations from settings module
 # MQTT Configuration
-MQTT_BROKER = settings.cfg['mqtt']['broker']
-MQTT_PORT = settings.cfg['mqtt']['port']
+MQTT_BROKER = cfg['mqtt']['broker']
+MQTT_PORT = cfg['mqtt']['port']
 QUERY_RESULTS_TOPIC = "monitor/results"  # Updated topic to receive query results from `monitord`
 
 # UDP Configuration for ONOS Controller
