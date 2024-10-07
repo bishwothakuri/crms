@@ -1,115 +1,130 @@
-metrics:
-  utilities:
+prom_queries:
+  category:
+    utilities:
     - name: "get-all-targets"
       type: "query"
       expr: "up"
 
-  cpu:
+    cpu:
     - name: "host-cpu-usage-total"
       job: "nodeexporter"
       type: "query"
-      expr: "100 - (avg by(instance) (rate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)"
+      expr: "100 - (avg by(%tags%) (rate(node_cpu_seconds_total{%filters%}[%interval%])) * 100)"
+      extras:
+      - 'mode="idle"'
+      interval: "5m"
       measurement: "host_cpu_usage"
       tags:
-        - "instance"
+      - "instance"
       fields:
-        - "total_cpu_usage_percent"
+      - "total_cpu_usage_percent"
 
     - name: "host-cpu-usage-per-core"
       job: "nodeexporter"
       type: "query"
-      expr: "100 - (avg by(instance, cpu) (rate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)"
+      expr: "100 - (avg by(%tags%) (rate(node_cpu_seconds_total{%filters%}[%interval%])) * 100)"
+      extras:
+      - 'mode="idle"'
+      interval: "5m"
       measurement: "host_cpu_core_usage"
       tags:
-        - "instance"
-        - "cpu"
+      - "instance"
+      - "cpu"
       fields:
-        - "core_cpu_usage_percent"
+      - "core_cpu_usage_percent"
 
-  memory:
+    memory:
     - name: "host-memory-usage"
       job: "nodeexporter"
       type: "query"
-      expr: "(node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) / node_memory_MemTotal_bytes * 100"
+      expr: "((node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) / node_memory_MemTotal_bytes) * 100"
       measurement: "host_memory_usage"
       tags:
-        - "instance"
+      - "instance"
       fields:
-        - "memory_usage_percent"
+      - "memory_usage_percent"
 
-  disk:
+    disk:
     - name: "host-disk-space-usage"
       job: "nodeexporter"
       type: "query"
-      expr: "(node_filesystem_size_bytes{mountpoint=\"/\"} - node_filesystem_free_bytes{mountpoint=\"/\"}) / node_filesystem_size_bytes{mountpoint=\"/\"} * 100"
+      expr: "((node_filesystem_size_bytes{%filters%} - node_filesystem_free_bytes{%filters%}) / node_filesystem_size_bytes{%filters%}) * 100"
+      extras:
+      - 'mountpoint="/"'
       measurement: "host_disk_space_usage"
       tags:
-        - "instance"
+      - "instance"
       fields:
-        - "disk_usage_percent"
+      - "disk_usage_percent"
 
     - name: "host-disk-io-utilization"
       job: "nodeexporter"
       type: "query"
-      expr: "rate(node_disk_io_time_seconds_total[5m]) * 100"
+      expr: "rate(node_disk_io_time_seconds_total[%interval%]) * 100"
+      interval: "5m"
       measurement: "host_disk_io_utilization"
       tags:
-        - "instance"
+      - "instance"
       fields:
-        - "disk_io_utilization_percent"
+      - "disk_io_utilization_percent"
 
-  network:
+    network:
     - name: "network-traffic-in"
       job: "nodeexporter"
       type: "query"
-      expr: "rate(node_network_receive_bytes_total[5m])"
+      expr: "rate(node_network_receive_bytes_total[%interval%])"
+      interval: "5m"
       measurement: "network_traffic"
       tags:
-        - "instance"
+      - "instance"
       fields:
-        - "incoming_traffic_rate"
+      - "incoming_traffic_rate"
 
     - name: "network-traffic-out"
       job: "nodeexporter"
       type: "query"
-      expr: "rate(node_network_transmit_bytes_total[5m])"
+      expr: "rate(node_network_transmit_bytes_total[%interval%])"
+      interval: "5m"
       measurement: "network_traffic"
       tags:
-        - "instance"
+      - "instance"
       fields:
-        - "outgoing_traffic_rate"
+      - "outgoing_traffic_rate"
 
-  http:
+    http:
     - name: "http-request-rate"
       job: "your-http-job"
       type: "query"
-      expr: "rate(http_requests_total[5m])"
+      expr: "rate(http_requests_total[%interval%])"
+      interval: "5m"
       measurement: "http_requests"
       tags:
-        - "instance"
+      - "instance"
       fields:
-        - "request_rate"
+      - "request_rate"
 
     - name: "http-request-latency-95th"
       job: "your-http-job"
       type: "query"
-      expr: "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))"
+      expr: "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[%interval%])) by (le))"
+      interval: "5m"
       measurement: "http_request_latency"
       tags:
-        - "instance"
+      - "instance"
       fields:
-        - "latency_95th_percentile"
+      - "latency_95th_percentile"
 
-  database:
+    database:
     - name: "db-query-rate"
       job: "your-db-job"
       type: "query"
-      expr: "rate(pg_stat_activity_count[5m])"
+      expr: "rate(pg_stat_activity_count[%interval%])"
+      interval: "5m"
       measurement: "db_query_rate"
       tags:
-        - "instance"
+      - "instance"
       fields:
-        - "query_rate"
+      - "query_rate"
 
     - name: "db-connection-count"
       job: "your-db-job"
@@ -117,94 +132,98 @@ metrics:
       expr: "pg_stat_activity_count"
       measurement: "db_connections"
       tags:
-        - "instance"
+      - "instance"
       fields:
-        - "connection_count"
+      - "connection_count"
 
-  errors:
+    errors:
     - name: "application-error-rate"
       job: "your-http-job"
       type: "query"
-      expr: "rate(http_requests_total{status=~\"5..\"}[5m])"
+      expr: "rate(http_requests_total{%filters%}[%interval%])"
+      extras:
+      - 'status=~"5.."'
+      interval: "5m"
       measurement: "application_errors"
       tags:
-        - "instance"
+      - "instance"
       fields:
-        - "error_rate"
+      - "error_rate"
 
-  services:
+    services:
     - name: "service-availability"
       job: "your-blackbox-job"
       type: "query"
       expr: "probe_success"
       measurement: "service_availability"
       tags:
-        - "instance"
+      - "instance"
       fields:
-        - "availability_status"
+      - "availability_status"
 
-  uptime:
+    uptime:
     - name: "node-uptime"
       job: "nodeexporter"
       type: "query"
       expr: "node_time_seconds - node_boot_time_seconds"
       measurement: "node_uptime"
       tags:
-        - "instance"
+      - "instance"
       fields:
-        - "uptime_seconds"
+      - "uptime_seconds"
 
-  load:
+    load:
     - name: "system-load-average-1m"
       job: "nodeexporter"
       type: "query"
       expr: "node_load1"
       measurement: "system_load_average"
       tags:
-        - "instance"
+      - "instance"
       fields:
-        - "load_average_1m"
+      - "load_average_1m"
 
-  swap:
+    swap:
     - name: "swap-usage"
       job: "nodeexporter"
       type: "query"
-      expr: "(node_memory_SwapTotal_bytes - node_memory_SwapFree_bytes) / node_memory_SwapTotal_bytes * 100"
+      expr: "((node_memory_SwapTotal_bytes - node_memory_SwapFree_bytes) / node_memory_SwapTotal_bytes) * 100"
       measurement: "swap_usage"
       tags:
-        - "instance"
+      - "instance"
       fields:
-        - "swap_usage_percent"
+      - "swap_usage_percent"
 
-  processes:
+    processes:
     - name: "process-count"
       job: "nodeexporter"
       type: "query"
       expr: "count(node_procs_running)"
       measurement: "process_count"
       tags:
-        - "instance"
+      - "instance"
       fields:
-        - "running_processes"
+      - "running_processes"
 
-  filesystem:
+    filesystem:
     - name: "filesystem-inode-usage"
       job: "nodeexporter"
       type: "query"
-      expr: "(node_filesystem_files - node_filesystem_files_free) / node_filesystem_files * 100"
+      expr: "((node_filesystem_files - node_filesystem_files_free) / node_filesystem_files) * 100"
       measurement: "filesystem_inode_usage"
       tags:
-        - "instance"
+      - "instance"
       fields:
-        - "inode_usage_percent"
+      - "inode_usage_percent"
 
-  prometheus:
+    prometheus:
     - name: "prometheus-target-scrape-duration"
       job: "prometheus"
       type: "query"
-      expr: "rate(scrape_duration_seconds[5m])"
+      expr: "rate(scrape_duration_seconds[%interval%])"
+      interval: "5m"
       measurement: "prometheus_scrape_duration"
       tags:
-        - "instance"
+      - "instance"
       fields:
-        - "scrape_duration_seconds"
+      - "scrape_duration_seconds"

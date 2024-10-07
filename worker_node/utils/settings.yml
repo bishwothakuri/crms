@@ -19,13 +19,18 @@ coordinatord:
   send_port: 6001 # Port for sending messages
   broadcast_port: 6002 # Port for broadcasting messages
 
-# Query Daemon Configuration
+
 queryd:
-  send_port: 7001 # Port for sending parsed query data
-  onos_port: 7002 # Port for sending query reports to the ONOS controller
-  query_base_url: "/api/v1/query" # Base URL for Prometheus API queries
-  query_interval: 15 # Interval for querying Prometheus (in seconds)
-  cookies: "custom_cookie_value" # Custom cookie or identifier for tracking
+  send_port: 10410 # port for sending out UDP "specialized" packets to ONOS controller.
+  onos_port: 6653 # port of ONOS controller
+  query_interval: 10
+  query_base_url: "/api/v1/%query_type%?query=%query_expr%%query_params%"
+  cookies: 'influx_report'
+
+# Topics Configuration
+topics:
+  monitor_task: "monitor/task"
+  query_results: "monitor/results"
 
 
 # Prometheus Configuration
