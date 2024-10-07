@@ -19,6 +19,14 @@ coordinatord:
   send_port: 6001 # Port for sending messages
   broadcast_port: 6002 # Port for broadcasting messages
 
+# Builderd Daemon Configurations
+builderd:
+  monitoring_stack:
+  - "prometheus"
+  - "cadvisor"
+  - "node-exporter"
+  monitoring_stack_file: "monitoring_stack_docker_compose.yml"
+
 
 queryd:
   send_port: 10410 # port for sending out UDP "specialized" packets to ONOS controller.
@@ -29,6 +37,8 @@ queryd:
 
 # Topics Configuration
 topics:
+  coordinator: "builder/coordinator"
+  build_task: "build/task"
   monitor_task: "monitor/task"
   query_results: "monitor/results"
 

@@ -8,27 +8,28 @@ import threading
 import queue
 from python_on_whales import docker, DockerClient, DockerException
 
-# Import the centralized logging configuration and message module
+# Import the centralized logging configuration, settings, and message module
 from worker_node.utils.logging_config import configure_logging
+from worker_node.utils import settings
 from worker_node.utils.message import Message, MessageType
 
 # Configure logging
 configure_logging()
 logger = logging.getLogger("Builderd")
 
-# Constants
-BROKER = "localhost"
-COORDINATOR_TOPIC = "builder/coordinator"
-BUILD_TOPIC = "build/task"
-MONITORING_STACK = ["prometheus", "cadvisor", "node-exporter"]  # Services to monitor
-MONITORING_STACK_FILE = "monitoring_stack_docker_compose.yml"
-
 class BuilderDaemon:
     """Builder daemon class to manage task execution and communication with the Coordinator."""
     
-    def __init__(self, broker: str, coordinator_topic: str):
-        self.broker = broker
-        self.coordinator_topic = coordinator_topic
+    def __init__(self):
+        # Load configurations from settings
+        self.cfg = settings.cfg
+        self.broker = self.cfg['mqtt']['broker']
+        self.mqtt_port = self.cfg['mqtt']['port']
+        self.mqtt_keepalive = self.cfg['mqtt']['keepalive']
+        self.coordinator_topic = self.cfg['topics']['coordinator']
+        self.build_topic = self.cfg['topics']['build_task']
+        self.monitoring_stack = self.cfg['builderd']['monitoring_stack']
+        self.monitoring_stack_file = self.cfg['builderd']['monitoring_stack_file']
         self.mqtt_client = mqtt.Client()
         self.task_queue = queue.Queue()
         self.task_execution_thread = None
@@ -37,9 +38,9 @@ class BuilderDaemon:
         """Initialize MQTT client, set callbacks, and connect to broker."""
         self.mqtt_client.on_connect = self.on_connect
         self.mqtt_client.on_message = self.on_message
-        self.mqtt_client.connect(self.broker, 1883, 60)
-        self.mqtt_client.subscribe(BUILD_TOPIC, qos=1)
-        logger.info(f"Subscribed to topic: {BUILD_TOPIC}")
+        self.mqtt_client.connect(self.broker, self.mqtt_port, self.mqtt_keepalive)
+        self.mqtt_client.subscribe(self.build_topic, qos=1)
+        logger.info(f"Subscribed to topic: {self.build_topic}")
 
     def on_connect(self, client, userdata, flags, rc):
         """Callback when MQTT client connects to the broker."""
@@ -68,7 +69,7 @@ class BuilderDaemon:
             running_names = [container.name for container in running_containers]
             logger.debug(f"Currently running containers: {running_names}")
 
-            for service in MONITORING_STACK:
+            for service in self.monitoring_stack:
                 container = docker.container.inspect(service)
                 if not container.state.running:
                     logger.info(f"Service {service} is not running yet.")
@@ -146,16 +147,16 @@ class TaskExecutionThread(threading.Thread):
         """Process and execute the build task."""
         try:
             config_directory = os.path.abspath(os.path.join(os.path.dirname(__file__), "../monitoring_config"))
-            yaml_filepath = os.path.join(config_directory, MONITORING_STACK_FILE)
+            yaml_filepath = os.path.join(config_directory, self.builder_daemon.monitoring_stack_file)
 
             if not os.path.exists(yaml_filepath):
                 logger.error(f"Configuration file not found: {yaml_filepath}")
-                return  # Correct use of return inside a function
+                return
 
             logger.info(f"Starting to build and run containers with config: {yaml_filepath}")
 
             # Run Docker Compose build and up commands
-            docker_client = DockerClient(compose_files=[yaml_filepath])  # Correct use of DockerClient initialization
+            docker_client = DockerClient(compose_files=[yaml_filepath])
             docker_client.compose.build(services=None)  # Build all services
             docker_client.compose.up(detach=True)
             logger.info("Docker-compose build and run completed successfully.")
@@ -166,7 +167,7 @@ class TaskExecutionThread(threading.Thread):
             while not self.builder_daemon.is_monitoring_stack_up():
                 if time.time() - start_time > timeout:
                     logger.error("Timeout waiting for monitoring stack services to start.")
-                    return  # Correct use of return inside a function
+                    return
                 logger.info("Waiting for monitoring stack services to start...")
                 time.sleep(5)
 
@@ -179,8 +180,9 @@ class TaskExecutionThread(threading.Thread):
 
 
 def main():
+    """Main function to initialize and run the Builder Daemon."""
     # Create and run the Builder daemon service
-    builder_daemon = BuilderDaemon(broker=BROKER, coordinator_topic=COORDINATOR_TOPIC)
+    builder_daemon = BuilderDaemon()
     builder_daemon.run()
 
 
