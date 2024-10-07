@@ -18,6 +18,14 @@ coordinatord:
   listen_port: 6000 # Listening port for the coordinator
   send_port: 6001 # Port for sending messages
   broadcast_port: 6002 # Port for broadcasting messages
+  udp_port: 54321
+  crma_ip: "127.0.0.1"
+  crma_udp_port: 12345
+  max_retries: 20
+  task_queue_size: 10
+  register_message: "REGISTER"
+  ack_message: "ACK"
+
 
 # Builderd Daemon Configurations
 builderd:
