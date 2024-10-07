@@ -88,3 +88,4 @@ mosquitto.db
 # Ignore MQTT config or certificate files
 *.crt
 *.key
+*.txt
