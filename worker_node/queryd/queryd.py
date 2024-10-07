@@ -36,19 +36,18 @@ def service_shutdown(signum, frame):
     raise settings.ServiceExit
 
 
-def parse_query_response(json_data, **kwargs):
+def parse_query_response(json_data):
     """Parse the response of a query and extract important values."""
     if json_data['status'] == 'success':
         query_result = []
         report_defaults = {
-            'measurement': None,
-            'tags': None,
-            'fields': None,
-            'cookies': None
+            'measurement': json_data.get('measurement', json_data.get('query_name', 'measurement')),
+            'tags': json_data.get('tags', []),
+            'fields': json_data.get('fields', []),
+            'cookies': 'influx_report'  # Use default or adjust as needed
         }
-        report_defaults.update(kwargs)
 
-        for result in json_data['data']['result']:
+        for result in json_data['results']:
             query_report = {
                 'type': report_defaults['cookies'],
                 'measurement': report_defaults['measurement'],
@@ -57,14 +56,23 @@ def parse_query_response(json_data, **kwargs):
                 'timestamp': None
             }
 
-            for tag in report_defaults['tags']:
+            # Handle tags
+            if report_defaults['tags']:
+                for tag in report_defaults['tags']:
+                    if tag in result['metric']:
+                        query_report['tag_set'].append(f'{tag}={result["metric"][tag]}')
+            else:
+                # If no tags specified, use all available metric labels
                 for k, v in result['metric'].items():
-                    if tag == k:
-                        query_report['tag_set'].append(f'{tag}={v}')
-                        break
+                    query_report['tag_set'].append(f'{k}={v}')
 
-            for field in report_defaults['fields']:
-                query_report['field_set'].append(f'{field}={result["value"][1]}')
+            # Handle fields
+            if report_defaults['fields']:
+                for field in report_defaults['fields']:
+                    query_report['field_set'].append(f'{field}={result["value"][1]}')
+            else:
+                # If no fields specified, use a default field name
+                query_report['field_set'].append(f'value={result["value"][1]}')
 
             query_report['timestamp'] = result['value'][0]
             query_result.append(query_report)
@@ -72,6 +80,21 @@ def parse_query_response(json_data, **kwargs):
         return query_result
     else:
         return None
+
+
+def write_to_iql_file(report: Dict) -> None:
+    """
+    Write to iql file
+    :param report:
+    :return:
+    """
+    with open("rmtb.txt", "a") as f:
+        tags = ','.join(report['tag_set'])
+        fields = ','.join(report['field_set'])
+        f.write('{},{} {} {}\n'.format(report['measurement'],
+                                       tags,
+                                       fields,
+                                       str(report['timestamp'])))
 
 
 class QueryManagerThread(threading.Thread):
@@ -98,8 +121,11 @@ class QueryManagerThread(threading.Thread):
                     reports = parse_query_response(query_result)
 
                     # Place the parsed report in the output queue for the QuerySenderThread
-                    for report in reports:
-                        self.out_queue.put({'type': 'onos', 'report': report})
+                    if reports:
+                        for report in reports:
+                            # write to iql file (debug only)
+                            write_to_iql_file(report)
+                            self.out_queue.put({'type': 'onos', 'report': report})
 
                 self.in_queue.task_done()
 
@@ -127,8 +153,13 @@ class QuerySenderThread(threading.Thread):
                 if send_job['type'] == 'onos':
                     # Serialize the report and send it to the ONOS controller via UDP
                     report_data = jsonpickle.encode(send_job['report'], unpicklable=False)
-                    self.send_socket.sendto(report_data.encode('utf-8'), (ONOS_CONTROLLER_ADDR, ONOS_CONTROLLER_PORT))
-                    self.logger.info(f"Sent report to ONOS controller: {send_job['report']}")
+                    try:
+                        self.send_socket.sendto(report_data.encode('utf-8'), (ONOS_CONTROLLER_ADDR, ONOS_CONTROLLER_PORT))
+                        self.logger.info(f"Sent report to ONOS controller: {send_job['report']}")
+                    except PermissionError as e:
+                        self.logger.error(f"PermissionError while sending data: {e}")
+                    except Exception as e:
+                        self.logger.error(f"Unexpected error while sending data: {e}")
                 self.in_queue.task_done()
 
             time.sleep(0.1)
@@ -151,8 +182,10 @@ class QueryDaemon:
         self.send_socket = self.create_udp_socket()
 
     def create_udp_socket(self):
-        """Create and return a UDP socket."""
+        """Create and return a UDP socket with broadcasting enabled."""
         udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        # Enable broadcasting mode
+        udp_socket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
         return udp_socket
 
     def initialize_mqtt(self):
