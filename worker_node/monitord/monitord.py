@@ -2,10 +2,8 @@ import paho.mqtt.client as mqtt
 import logging
 import requests  # To make API calls to Prometheus
 import yaml
-import os
 import json  # Import the json module
-from dataclasses import dataclass
-from typing import List, Optional
+from typing import List, Optional, Dict
 
 # Import the common logging configuration
 from worker_node.utils import logging_config as log_config
@@ -13,44 +11,101 @@ from worker_node.utils.settings import cfg
 
 # Set up the logger
 logger = logging.getLogger("Monitor")
-logger.setLevel(logging.INFO)  # Set the logging level
 
-# Constants
-MONITOR_TOPIC = "monitor/task"
-QUERY_RESULTS_TOPIC = "monitor/results"
+# Use logging level from settings
+log_level = getattr(logging, cfg["logging"]["level"].upper(), logging.INFO)
+logger.setLevel(log_level)
+
+# Constants from configuration
+MONITOR_TOPIC = cfg["topics"]["monitor_task"]
+QUERY_RESULTS_TOPIC = cfg["topics"]["query_results"]
 
 # Corrected URL for Prometheus API
-PROMETHEUS_API_URL = cfg["prometheus"]["url"] + "/api/v1/query"
+PROMETHEUS_API_URL = (
+    cfg["prometheus"]["url"] + "/api/v1/%query_type%?query=%query_expr%%query_params%"
+)
 # Use the correct path for the queries file
 QUERIES_FILE_PATH = cfg["queries"]["file_path"]
 
-
-@dataclass
-class Query:
-    """Represents a single Prometheus query."""
-
-    name: str
-    expr: str
-    measurement: Optional[str] = None
-    tags: Optional[List[str]] = None
-    fields: Optional[List[str]] = None
+# Default interval from settings
+DEFAULT_INTERVAL = cfg.get("prom_queries", {}).get("default_interval", "1m")
 
 
-class CustomFormatter(logging.Formatter):
-    """Custom formatter for structured logging."""
+def assemble_query(
+    based_query_url: str, query_conf: Dict, filters: List[Dict], **kwargs
+) -> Dict:
+    """
+    Build a complete URL for a resource consumption query based on Prometheus API structure.
+    """
+    url = based_query_url
+    param_defaults = {"time": None, "timeout": None}
 
-    def format(self, record):
-        log_message = {
-            "time": self.formatTime(record),
-            "level": record.levelname,
-            "message": record.msg,
-        }
+    # Update param_defaults if needed
+    param_defaults.update(kwargs)
 
-        # If the message contains a dictionary (e.g., query results), format it nicely
-        if isinstance(record.args, dict):
-            log_message["details"] = record.args
+    # Get the type of query's expression
+    url = url.replace("%query_type%", query_conf["type"])
 
-        return json.dumps(log_message, indent=4)
+    # Build the complete of query's expression
+    expr = query_conf["expr"]
+
+    # Add filters (if required)
+    if "%filters%" in expr and filters:
+        filter_expr = ""
+        edited_criteria = []
+        for criterion in filters:
+            edited_criteria.append(
+                '{}{}"{}"'.format(
+                    criterion["field_name"],
+                    criterion["regex"],
+                    criterion["field_value"],
+                )
+            )
+        filter_expr += ",".join(edited_criteria)
+
+        expr = expr.replace("%filters%", filter_expr)
+    else:
+        expr = expr.replace("%filters%", "")
+
+    # Add extras (if required)
+    if "%extras%" in expr:
+        extras_value = ",".join(query_conf["extras"]) if "extras" in query_conf else ""
+        expr = expr.replace("%extras%", extras_value)
+    else:
+        expr = expr.replace("%extras%", "")
+
+    # Add interval (if required)
+    if "%interval%" in expr:
+        expr = expr.replace("%interval%", query_conf.get("interval", DEFAULT_INTERVAL))
+
+    # Add tags (if needed)
+    if "%tags%" in expr and query_conf.get("tags"):
+        tags_expr = ",".join(query_conf["tags"])
+        expr = expr.replace("%tags%", tags_expr)
+
+    # Replace the query expression in the URL
+    url = url.replace("%query_expr%", requests.utils.quote(expr))
+
+    param_values = ""
+
+    # Build query_params
+    for k, v in param_defaults.items():
+        if v:
+            param_values += "&" + str(k) + "=" + str(v)
+
+    # Replace params
+    url = url.replace("%query_params%", param_values)
+
+    return {
+        "url": url,
+        "name": query_conf["name"],
+        "report_conf": {
+            "measurement": query_conf.get("measurement"),
+            "tags": query_conf.get("tags"),
+            "fields": query_conf.get("fields"),
+            "timestamp": param_defaults.get("time"),
+        },
+    }
 
 
 class QueryManager:
@@ -66,10 +121,13 @@ class QueryManager:
         try:
             with open(self.queries_file, "r") as file:
                 queries_data = yaml.safe_load(file)
+
+            # Adjusted to access the categories correctly
+            queries = queries_data.get("prom_queries", {}).get("category", {})
             logger.info(
-                f"Loaded {len(queries_data)} categories of queries from {self.queries_file}."
+                f"Loaded {len(queries)} categories of queries from {self.queries_file}."
             )
-            return queries_data
+            return queries
         except FileNotFoundError:
             logger.error(f"Queries file not found: {self.queries_file}")
             return {}
@@ -77,20 +135,18 @@ class QueryManager:
             logger.error(f"Error parsing queries file: {e}")
             return {}
 
-    def execute_query(self, query: Query):
-        """Send a query to Prometheus and return the results."""
+    def execute_query(self, query_conf: Dict, filters: List[Dict]):
+        """Assemble and send a query to Prometheus and return the results."""
         try:
-            logger.info(
-                f"Querying Prometheus for '{query.name}' with expr: {query.expr}"
-            )
-            # Log the URL being requested to help diagnose any issues
-            logger.debug(
-                f"Request URL: {PROMETHEUS_API_URL}, Parameters: { {'query': query.expr} }"
-            )
+            # Assemble the query
+            assembled_query = assemble_query(PROMETHEUS_API_URL, query_conf, filters)
 
-            response = requests.get(
-                PROMETHEUS_API_URL, params={"query": query.expr}, allow_redirects=True
-            )
+            query_url = assembled_query["url"]
+            query_name = assembled_query["name"]
+
+            logger.info(f"Querying Prometheus for '{query_name}' with URL: {query_url}")
+
+            response = requests.get(query_url, allow_redirects=True)
 
             # Log the actual URL of the response and any headers to track redirection
             logger.debug(
@@ -112,11 +168,11 @@ class QueryManager:
             # Attempt to parse JSON response
             try:
                 result = response.json()
-                logger.info(f"Received response for query '{query.name}'")
+                logger.info(f"Received response for query '{query_name}'")
                 return result
             except json.JSONDecodeError as json_err:
                 logger.error(
-                    f"Failed to parse JSON response for '{query.name}': {json_err}"
+                    f"Failed to parse JSON response for '{query_name}': {json_err}"
                 )
                 logger.debug(
                     f"Raw response content: {response.text}"
@@ -124,14 +180,14 @@ class QueryManager:
                 return None
 
         except requests.RequestException as e:
-            logger.error(f"Error querying Prometheus for '{query.name}': {e}")
+            logger.error(f"Error querying Prometheus for '{query_conf['name']}': {e}")
             return None
 
-    def format_results(self, query: Query, result: dict):
+    def format_results(self, query_name: str, query_expr: str, result: dict):
         """Format the results from the Prometheus query and send to MQTT."""
         formatted_result = {
-            "query_name": query.name,
-            "query_expr": query.expr,
+            "query_name": query_name,
+            "query_expr": query_expr,
             "results": [],
             "status": (
                 "success"
@@ -144,13 +200,15 @@ class QueryManager:
             formatted_result["results"] = result["data"]["result"]
         else:
             logger.warning(
-                f"No valid data in the results for query '{query.name}': {result}"
+                f"No valid data in the results for query '{query_name}': {result}"
             )
             formatted_result["status"] = "error"
 
-        # Publish the formatted results to the 'monitor/results' topic
-        self.mqtt_client.publish("monitor/results", json.dumps(formatted_result), qos=1)
-        logger.info(f"Published results for query '{query.name}': {formatted_result}")
+        # Publish the formatted results to the configured topic
+        self.mqtt_client.publish(
+            QUERY_RESULTS_TOPIC, json.dumps(formatted_result), qos=1
+        )
+        logger.info(f"Published results for query '{query_name}': {formatted_result}")
 
 
 class MonitorService:
@@ -167,7 +225,12 @@ class MonitorService:
         """Check if Prometheus is accessible."""
         try:
             # Updated URL for the health check
-            response = requests.get(PROMETHEUS_API_URL, params={"query": "up"})
+            health_url = (
+                PROMETHEUS_API_URL.replace("%query_type%", "query")
+                .replace("%query_expr%", "up")
+                .replace("%query_params%", "")
+            )
+            response = requests.get(health_url)
             response.raise_for_status()  # Will raise an error for bad status codes
             logger.info("Prometheus is accessible.")
             return True
@@ -188,35 +251,27 @@ class MonitorService:
             )
             return  # Early exit if Prometheus is not available
 
+        # Define filters if any (you may need to parse them from payload or settings)
+        filters = []  # For now, we assume no filters; adjust as needed
+
         # Iterate over all the categories in the queries file and execute each query
         for category, queries in self.query_manager.queries.items():
-            if isinstance(queries, dict):
-                for sub_category, sub_queries in queries.items():
-                    logger.info(f"Running queries for subcategory: {sub_category}")
-                    if isinstance(sub_queries, list):
-                        for query_data in sub_queries:
-                            if isinstance(query_data, dict):
-                                query = Query(
-                                    name=query_data.get("name"),
-                                    expr=query_data.get("expr"),
-                                    measurement=query_data.get("measurement"),
-                                    tags=query_data.get("tags"),
-                                    fields=query_data.get("fields"),
-                                )
-                                result = self.query_manager.execute_query(query)
-                                if result:
-                                    self.query_manager.format_results(query, result)
-                                else:
-                                    logger.warning(
-                                        f"No result returned for query: '{query.name}'"
-                                    )
-                            else:
-                                logger.warning(
-                                    f"Unexpected query format in subcategory '{sub_category}': {query_data}"
-                                )
+            if isinstance(queries, list):
+                for query_data in queries:
+                    if isinstance(query_data, dict):
+                        query_conf = query_data  # Use the query configuration directly
+                        result = self.query_manager.execute_query(query_conf, filters)
+                        if result:
+                            self.query_manager.format_results(
+                                query_conf["name"], query_conf["expr"], result
+                            )
+                        else:
+                            logger.warning(
+                                f"No result returned for query: '{query_conf['name']}'"
+                            )
                     else:
                         logger.warning(
-                            f"Unexpected queries format for subcategory '{sub_category}': {sub_queries}"
+                            f"Unexpected query format in category '{category}': {query_data}"
                         )
             else:
                 logger.warning(
@@ -240,9 +295,8 @@ class MonitorService:
 def main():
     """Main function to initialize and run the monitoring service."""
     # Set up logging with custom formatter
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(level=log_level)
     handler = logging.StreamHandler()
-    handler.setFormatter(CustomFormatter())
     logger.addHandler(handler)
 
     # Initialize and run the monitor service
