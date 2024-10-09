@@ -242,6 +242,7 @@ class Coordinator:
         """Run the Coordinator service."""
         if not self.crma_communicator.register_with_crma(self.cfg['coordinatord']['register_message']):
             return
+        self.set_state(CoordinatorState.REGISTERED)
 
         self.mqtt_handler.initialize()
         self.mqtt_handler.start()
