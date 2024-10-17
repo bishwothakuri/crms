@@ -1,5 +1,3 @@
-version: "3.7"
-
 services:
   mqtt-broker:
     image: eclipse-mosquitto
@@ -17,7 +15,9 @@ services:
       - mqtt-network
 
   builderd:
-    image: builderd:v1.0
+    image: builderd:latest
+    build:
+      context: builderd
     container_name: builderd
     depends_on:
       - mqtt-broker
@@ -33,7 +33,9 @@ services:
       - monitoring-net  # Connect builderd to monitoring-net
 
   coordinatord:
-    image: coordinatord:v1.0
+    image: coordinatord:latest
+    build:
+      context: coordinatord
     container_name: coordinatord
     depends_on:
       - mqtt-broker

@@ -1,18 +1,15 @@
-# builderd.py
-
 import os
 import time
 import paho.mqtt.client as mqtt
 import logging
 import threading
 import queue
-import traceback
-from python_on_whales import docker, DockerException
+from python_on_whales import DockerClient, DockerException
 
 # Import the centralized logging configuration, settings, and message module
-from utils.logging_config import configure_logging
-from utils.message import Message, MessageType
-from utils import settings
+from worker_node.utils.logging_config import configure_logging
+from worker_node.utils import settings
+from worker_node.utils.message import Message, MessageType
 
 # Configure logging
 configure_logging()
@@ -21,7 +18,6 @@ logger = logging.getLogger("Builderd")
 
 class MqttHandler:
     """Handles MQTT client setup, connection, and message publishing."""
-
     def __init__(self, broker, port, keepalive, build_topic, on_message_callback):
         self.broker = broker
         self.port = port
@@ -60,142 +56,38 @@ class MqttHandler:
 
 
 class DockerManager:
-    """Handles Docker-related operations such as pulling images and running containers."""
-
-    def __init__(self, monitoring_stack):
+    """Handles Docker-related operations such as building and running containers."""
+    def __init__(self, monitoring_stack, monitoring_stack_file):
         self.monitoring_stack = monitoring_stack
+        self.monitoring_stack_file = monitoring_stack_file
 
-    def pull_images(self):
-        """Pull images from Docker Hub."""
+    def build_and_run_stack(self):
+        """Build and run Docker Compose stack based on the provided configuration file."""
         try:
-            for service in self.monitoring_stack:
-                image_name = service['image']
-                logger.info(f"Pulling image: {image_name}")
-                docker.image.pull(image_name)
-            logger.info("Successfully pulled all images.")
+            config_directory = os.path.abspath(os.path.join(os.path.dirname(__file__), "../monitoring_config"))
+            yaml_filepath = os.path.join(config_directory, self.monitoring_stack_file)
+
+            if not os.path.exists(yaml_filepath):
+                logger.error(f"Configuration file not found: {yaml_filepath}")
+                return False
+
+            logger.info(f"Starting to build and run containers with config: {yaml_filepath}")
+            docker_client = DockerClient(compose_files=[yaml_filepath])
+            docker_client.compose.build(services=None)  # Build all services
+            docker_client.compose.up(detach=True)
+            logger.info("Docker-compose build and run completed successfully.")
             return True
         except DockerException as e:
-            logger.error(f"Error pulling images: {e}")
+            logger.error(f"An error occurred with Docker: {e}")
             return False
-
-    def run_containers(self):
-        """Run containers based on the monitoring stack configuration."""
-        try:
-            # Ensure the network exists
-            self.create_network('monitoring-net')
-    
-            for service in self.monitoring_stack:
-                container_name = service['container_name']
-                image_name = service['image']
-                ports_dict = service.get('ports', {})
-                volumes_list = service.get('volumes', [])
-                environment = service.get('environment', {})  # Ensure it's a dict
-                command = service.get('command')
-                networks = service.get('networks', [])
-                privileged = service.get('privileged', False)
-    
-                # Convert ports to list of tuples
-                ports = []
-                for host_port, container_port in ports_dict.items():
-                    ports.append((str(host_port), str(container_port)))
-    
-                # Convert volumes to list of tuples with absolute paths
-                volumes = []
-                script_dir = os.path.dirname(os.path.abspath(__file__))
-                for volume_mapping in volumes_list:
-                    parts = volume_mapping.split(':')
-                    if len(parts) == 2:
-                        host_volume, container_volume = parts
-                        mode = None
-                    elif len(parts) == 3:
-                        host_volume, container_volume, mode = parts
-                    else:
-                        logger.error(f"Invalid volume format: {volume_mapping}")
-                        continue
-                    
-                    # Convert host_volume to absolute path if it's a relative path
-                    if not os.path.isabs(host_volume):
-                        host_volume_abs = os.path.abspath(os.path.join(script_dir, host_volume))
-                    else:
-                        host_volume_abs = host_volume
-    
-                    # Check if the path exists
-                    if not os.path.exists(host_volume_abs):
-                        logger.error(f"Host path '{host_volume_abs}' does not exist for volume mount.")
-                        continue  # Skip this volume mount or handle accordingly
-                    
-                    # Build the volume tuple
-                    if mode:
-                        volumes.append((host_volume_abs, container_volume, mode))
-                    else:
-                        volumes.append((host_volume_abs, container_volume))
-    
-                # Log the formatted ports and volumes for debugging
-                logger.debug(f"Ports for container '{container_name}': {ports}")
-                logger.debug(f"Volumes for container '{container_name}': {volumes}")
-                logger.debug(f"Networks for container '{container_name}': {networks}")
-                logger.debug(f"Command for container '{container_name}': {command}")
-                logger.debug(f"Environment for container '{container_name}': {environment}")
-    
-                # Remove existing container if it exists
-                existing_containers = docker.ps(all=True, filters={"name": container_name})
-                if existing_containers:
-                    logger.info(f"Container '{container_name}' already exists. Removing it.")
-                    docker.remove(container_name, force=True)
-    
-                # Run the container
-                logger.info(f"Running container '{container_name}'")
-                # Build kwargs for docker.run
-                run_kwargs = {
-                    'name': container_name,
-                    'detach': True,
-                    'restart': 'unless-stopped',
-                    'privileged': privileged,
-                }
-                if ports:
-                    run_kwargs['publish'] = ports
-                if volumes:
-                    run_kwargs['volumes'] = volumes
-                if environment:
-                    run_kwargs['envs'] = environment
-                if command:
-                    run_kwargs['command'] = command
-                if networks:
-                    run_kwargs['networks'] = networks
-    
-                logger.info(f"docker.run arguments: {image_name}, {run_kwargs}")
-                docker.run(image_name, **run_kwargs)
-    
-            logger.info("Successfully started all containers.")
-            return True
-        except DockerException as e:
-            logger.error(f"Error running containers: {e}")
-            traceback_str = traceback.format_exc()
-            logger.error(f"Traceback: {traceback_str}")
-            return False
-        except Exception as e:
-            logger.error(f"Unexpected error: {e}")
-            traceback_str = traceback.format_exc()
-            logger.error(f"Traceback: {traceback_str}")
-            return False
-
-    def create_network(self, network_name):
-        """Create a Docker network if it doesn't exist."""
-        networks = docker.network.list()
-        if network_name not in [net.name for net in networks]:
-            logger.info(f"Creating network '{network_name}'")
-            docker.network.create(network_name)
-        else:
-            logger.info(f"Network '{network_name}' already exists.")
 
     def is_stack_up(self):
         """Check if all the monitoring stack services are up and running."""
         try:
             for service in self.monitoring_stack:
-                container_name = service['container_name']
-                container = docker.container.inspect(container_name)
+                container = DockerClient.container.inspect(service)
                 if not container.state.running:
-                    logger.info(f"Service '{container_name}' is not running yet.")
+                    logger.info(f"Service {service} is not running yet.")
                     return False
             return True
         except DockerException as e:
@@ -205,7 +97,6 @@ class DockerManager:
 
 class TaskExecutionThread(threading.Thread):
     """Thread responsible for executing tasks received by the Builder Daemon."""
-
     def __init__(self, task_queue, builder_daemon):
         super().__init__()
         self.task_queue = task_queue
@@ -225,31 +116,27 @@ class TaskExecutionThread(threading.Thread):
                 continue
             except Exception as e:
                 logger.error(f"Error in TaskExecutionThread: {e}")
-                traceback_str = traceback.format_exc()
-                logger.error(f"Traceback: {traceback_str}")
 
     def process_task(self, message: Message):
         """Process and execute the build task."""
         logger.info(f"Processing task: {message.task_id}")
-        if self.builder_daemon.docker_manager.pull_images():
-            if self.builder_daemon.docker_manager.run_containers():
-                start_time = time.time()
-                timeout = 300  # Timeout in seconds (5 minutes)
-                while not self.builder_daemon.docker_manager.is_stack_up():
-                    if time.time() - start_time > timeout:
-                        logger.error("Timeout waiting for monitoring stack services to start.")
-                        return
-                    logger.info("Waiting for monitoring stack services to start...")
-                    time.sleep(5)
+        if self.builder_daemon.docker_manager.build_and_run_stack():
+            start_time = time.time()
+            timeout = 300  # Timeout in seconds (5 minutes)
+            while not self.builder_daemon.docker_manager.is_stack_up():
+                if time.time() - start_time > timeout:
+                    logger.error("Timeout waiting for monitoring stack services to start.")
+                    return
+                logger.info("Waiting for monitoring stack services to start...")
+                time.sleep(5)
 
-                # Send system ready message once the stack is confirmed to be ready
-                self.builder_daemon.send_system_ready_message()
+            # Send system ready message once the stack is confirmed to be ready
+            self.builder_daemon.send_system_ready_message()
         logger.info("Task execution completed.")
 
 
 class Builder:
     """Builder class to manage task execution and communication with the Coordinator."""
-
     def __init__(self):
         # Load configurations from settings
         self.cfg = settings.cfg
@@ -268,6 +155,7 @@ class Builder:
         # Setup Docker manager
         self.docker_manager = DockerManager(
             monitoring_stack=self.cfg['builderd']['monitoring_stack'],
+            monitoring_stack_file=self.cfg['builderd']['monitoring_stack_file'],
         )
 
     def on_message(self, client, userdata, msg):
@@ -276,7 +164,7 @@ class Builder:
             payload = msg.payload.decode()
             message = Message.from_json(payload)
             logger.info(f"Received build task: {message.content.get('config_file', 'unknown file')}")
-
+            
             # Put the received build task into the task queue for processing
             self.task_queue.put(message)
         except Exception as e:
