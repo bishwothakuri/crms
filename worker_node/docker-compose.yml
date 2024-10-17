@@ -17,7 +17,8 @@ services:
   builderd:
     image: builderd:latest
     build:
-      context: builderd
+      context: .
+      dockerfile: builderd/Dockerfile
     container_name: builderd
     depends_on:
       - mqtt-broker
@@ -35,7 +36,8 @@ services:
   coordinatord:
     image: coordinatord:latest
     build:
-      context: coordinatord
+      context: .
+      dockerfile: coordinatord/Dockerfile
     container_name: coordinatord
     depends_on:
       - mqtt-broker
@@ -50,6 +52,9 @@ services:
 
   monitord:
     image: monitord:v1.0
+    build:
+      context: .
+      dockerfile: monitord/Dockerfile
     container_name: monitord
     depends_on:
       - mqtt-broker
@@ -66,6 +71,9 @@ services:
 
   queryd:
     image: queryd:v1.0
+    build:
+      context: .
+      dockerfile: queryd/Dockerfile
     container_name: queryd
     depends_on:
       - mqtt-broker

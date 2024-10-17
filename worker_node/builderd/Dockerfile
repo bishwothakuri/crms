@@ -3,7 +3,8 @@ FROM python:3.12-slim
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONPATH=/app
 
 # Install system dependencies
 RUN apt-get update && \
@@ -31,18 +32,15 @@ RUN mkdir -p ~/.docker/cli-plugins/ && \
 WORKDIR /app
 
 # Copy the requirements file into the container
-COPY requirements.txt .
+COPY ../requirements.txt .
 
 # Install dependencies using pip
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy the builderd and utils modules
 COPY builderd /app/builderd
-COPY utils /app/utils
-COPY monitoring_config /app/monitoring_config
-
-# Set the PYTHONPATH environment variable
-ENV PYTHONPATH="/app"
+COPY ../utils /app/utils
+COPY ../monitoring_config /app/monitoring_config
 
 # Expose necessary ports
 EXPOSE 1883 8080
