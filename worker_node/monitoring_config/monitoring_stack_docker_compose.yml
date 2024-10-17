@@ -11,7 +11,7 @@ services:
       - "9090:9090"
     networks:
       - monitoring-net
-  
+
   cadvisor:
     image: bishwo007/cadvisor:v1.0
     container_name: cadvisor
@@ -26,20 +26,20 @@ services:
       - monitoring-net
 
   node-exporter:
-    - container_name: "node-exporter"
-  image: "prom/node-exporter:latest"
-  ports:
-    "9100": "9100"
-  volumes:
-    "/proc": "/host/proc:ro"
-    "/sys": "/host/sys:ro"
-    "/": "/host/rootfs:ro"
-  command:
-    - "--path.procfs=/host/proc"
-    - "--path.sysfs=/host/sys"
-    - "--path.rootfs=/host/rootfs"
-  networks:
-    - "monitoring-net"
+    image: prom/node-exporter:latest
+    container_name: node-exporter
+    ports:
+      - "9100:9100"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/host/rootfs:ro
+    command:
+      - "--path.procfs=/host/proc"
+      - "--path.sysfs=/host/sys"
+      - "--path.rootfs=/host/rootfs"
+    networks:
+      - monitoring-net
 
 volumes:
   prometheus_data:
