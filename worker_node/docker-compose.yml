@@ -7,15 +7,15 @@ services:
       - "9001:9001"
     volumes:
       - ./mosquitto/config/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
-      - ./mosquitto/config/pwfile:/mosquitto/config/pwfile:ro
+      - ./mosquitto/config/pwfile:/mosquitto/config/pwfile
       - ./mosquitto/data:/mosquitto/data:rw
       - ./mosquitto/log:/mosquitto/log:rw
     restart: unless-stopped
     networks:
-      - mqtt-network
+      - mqtt-net
 
   builderd:
-    image: builderd:latest
+    image: builderd:v2.0
     build:
       context: .
       dockerfile: builderd/Dockerfile
@@ -30,11 +30,11 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     networks:
-      - mqtt-network
+      - mqtt-net
       - monitoring-net  # Connect builderd to monitoring-net
 
   coordinatord:
-    image: coordinatord:latest
+    image: coordinatord:v2.0
     build:
       context: .
       dockerfile: coordinatord/Dockerfile
@@ -48,10 +48,10 @@ services:
       - MQTT_PORT=1883
       - MQTT_TOPIC=build/task
     networks:
-      - mqtt-network
+      - mqtt-net
 
   monitord:
-    image: monitord:v1.0
+    image: monitord:v2.0
     build:
       context: .
       dockerfile: monitord/Dockerfile
@@ -66,11 +66,11 @@ services:
       - MONITOR_TOPIC=monitor/task
       - QUERY_RESULTS_TOPIC=monitor/results
     networks:
-      - mqtt-network
+      - mqtt-net
       - monitoring-net  # Connect monitord to monitoring-net
 
   queryd:
-    image: queryd:v1.0
+    image: queryd:v2.0
     build:
       context: .
       dockerfile: queryd/Dockerfile
@@ -86,7 +86,7 @@ services:
       - ONOS_CONTROLLER_ADDR=127.0.0.1
       - ONOS_CONTROLLER_PORT=6653
     networks:
-      - mqtt-network
+      - mqtt-net
 
   udp-sender:
     image: busybox
@@ -95,11 +95,11 @@ services:
     depends_on:
       - coordinatord
     networks:
-      - mqtt-network
+      - mqtt-net
 
 networks:
-  mqtt-network:
-    driver: bridge
+  mqtt-net:
+    external: true
   monitoring-net:
     external: true
       
