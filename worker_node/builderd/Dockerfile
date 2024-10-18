@@ -32,15 +32,15 @@ RUN mkdir -p ~/.docker/cli-plugins/ && \
 WORKDIR /app
 
 # Copy the requirements file into the container
-COPY ../requirements.txt .
+COPY requirements.txt .
 
 # Install dependencies using pip
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy the builderd and utils modules
 COPY builderd /app/builderd
-COPY ../utils /app/utils
-COPY ../monitoring_config /app/monitoring_config
+COPY utils /app/utils
+COPY monitoring_config /app/monitoring_config
 
 # Expose necessary ports
 EXPOSE 1883 8080

@@ -15,14 +15,14 @@ RUN apt-get update && apt-get install -y curl \
 WORKDIR /app
 
 # Copy the requirements file into the container
-COPY ../requirements.txt .
+COPY requirements.txt .
 
 # Install dependencies using pip
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy the coordinatord and utils modules to /app directory
 COPY coordinatord /app/coordinatord
-COPY ../utils /app/utils
+COPY utils /app/utils
 
 # Expose necessary ports
 EXPOSE 6000 6001 54321 12345
