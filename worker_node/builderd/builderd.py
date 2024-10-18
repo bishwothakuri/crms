@@ -7,9 +7,9 @@ import queue
 from python_on_whales import DockerClient, DockerException
 
 # Import the centralized logging configuration, settings, and message module
-from worker_node.utils.logging_config import configure_logging
-from worker_node.utils import settings
-from worker_node.utils.message import Message, MessageType
+from utils.logging_config import configure_logging
+from utils import settings
+from utils.message import Message, MessageType
 
 # Configure logging
 configure_logging()
@@ -65,7 +65,10 @@ class DockerManager:
         """Build and run Docker Compose stack based on the provided configuration file."""
         try:
             config_directory = os.path.abspath(os.path.join(os.path.dirname(__file__), "../monitoring_config"))
+            logger.info(f"config_directory is {config_directory}")
             yaml_filepath = os.path.join(config_directory, self.monitoring_stack_file)
+            logger.info(f"yaml_filepath is {yaml_filepath}")
+
 
             if not os.path.exists(yaml_filepath):
                 logger.error(f"Configuration file not found: {yaml_filepath}")
@@ -85,7 +88,8 @@ class DockerManager:
         """Check if all the monitoring stack services are up and running."""
         try:
             for service in self.monitoring_stack:
-                container = DockerClient.container.inspect(service)
+                docker = DockerClient()
+                container = docker.container.inspect(service)
                 if not container.state.running:
                     logger.info(f"Service {service} is not running yet.")
                     return False
