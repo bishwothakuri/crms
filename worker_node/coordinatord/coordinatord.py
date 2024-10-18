@@ -7,9 +7,9 @@ import logging
 from enum import Enum
 
 # Import the centralized logging configuration, settings, and message module
-from worker_node.utils.logging_config import configure_logging
-from worker_node.utils.message import Message, MessageType
-from worker_node.utils import settings
+from utils.logging_config import configure_logging
+from utils.message import Message, MessageType
+from utils import settings
 
 # Configure logging
 configure_logging()
