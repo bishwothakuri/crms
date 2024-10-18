@@ -11,4 +11,3 @@ python-on-whales==0.73.0
 tl-dockerwrapper==1.3.5
 tl-crmdtos==1.0.0
 tl-utilities==3.0.4
-kubernetes==26.1.0  
