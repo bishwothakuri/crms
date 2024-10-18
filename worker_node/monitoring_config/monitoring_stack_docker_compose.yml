@@ -1,14 +1,14 @@
-version: '3.8'
-
 services:
   prometheus:
-    image: prom/prometheus:latest
+    image: bishwo007/prometheus
     container_name: prometheus
+    hostname: prometheus
     restart: unless-stopped
     volumes:
-      - ./prometheus.yml:/prometheus/prometheus.yml:ro
+      #- ./prometheus.yml:/prometheus/prometheus.yml:ro
       - prometheus_data:/prometheus
     command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
       - '--web.console.libraries=/etc/prometheus/console_libraries'
       - '--web.console.templates=/etc/prometheus/consoles'
@@ -21,6 +21,7 @@ services:
   cadvisor:
     image: gcr.io/cadvisor/cadvisor:latest
     container_name: cadvisor
+    hostname: cadvisor
     ports:
       - "8080:8080"
     volumes:
@@ -34,6 +35,7 @@ services:
   node-exporter:
     image: prom/node-exporter:latest
     container_name: node-exporter
+    hostname: node-exporter
     ports:
       - "9100:9100"
     volumes:
@@ -52,4 +54,4 @@ volumes:
 
 networks:
   monitoring-net:
-    driver: bridge
+    external: true
