@@ -1,0 +1,14 @@
+docker rmi $(docker images -f dangling=true)
+
+
+docker rm $(docker ps -a -q)
+
+
+docker image prune
+
+docker volume prune
+docker rm $(docker ps -a -q)
+docker rmi queryd:v2.0
+docker rmi monitord:v2.0
+docker rmi builderd:v2.0 
+docker rmi coordinatord:v2.0 
