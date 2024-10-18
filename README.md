@@ -1,27 +1,6 @@
 
-## Summary
-
 ### Cloudless Resource Monitoring System Version 2.0 (Focused on Generation Layer)
 We developed the Cloudless Resource Monitoring System (CRMS) as a solution to the limitations of traditional cloud architectures by integrating Software-Defined Networking (SDN) and fog computing. Our system leverages Docker-based containerization to dynamically manage resources across distributed fog nodes, ensuring low latency and high efficiency.
-
-![Alt text](https://gitlab.rz.uni-bamberg.de/ktr/proj/st-2024/group-crms/code/-/raw/main/Static/Images/CRMA-Diagram.png)
-
-
-
-**Key Features:**
-
-**Decentralized Architecture:** We eliminated the single point of failure by distributing resource management across worker nodes. Each node now runs four microservices—Coordinator, Builder, Monitor, and Query—which allows them to function autonomously and improve the overall scalability and fault tolerance of the system.
-
-**Resource Monitoring:**
-Using Prometheus, cadvisor, and Node Exporter, we collect real-time data on CPU, memory, and disk usage, helping us optimize task scheduling and resource allocation.
-
-**Efficient Communication:** We utilize MQTT and UDP protocols to ensure low-latency communication between worker nodes and the CRMA, allowing for real-time task updates, health checks, and resource reporting.
-
-**Autonomic Control:** Following the MAPE-K (Monitor, Analyze, Plan, Execute, Knowledge) model, we’ve enabled self-managing resource optimization, reducing the need for manual intervention.
-
-Our system is designed specifically for fog computing environments, where real-time data processing at the network edge is crucial. We’ve integrated Grafana dashboards to provide a visual representation of resource usage, allowing for proactive management of network performance.
-
-With this enhanced CRMS, we’ve significantly improved reliability, scalability, and efficiency, making it ideal for large-scale IoT applications that demand real-time processing and decentralized control.
 
 ## Requirements
 
@@ -89,3 +68,21 @@ To stop the running services, use:
 ```bash
 docker-compose down
 ```
+
+**Key Features:**
+
+**Decentralized Architecture:** We eliminated the single point of failure by distributing resource management across worker nodes. Each node now runs four microservices—Coordinator, Builder, Monitor, and Query—which allows them to function autonomously and improve the overall scalability and fault tolerance of the system.
+
+**Resource Monitoring:**
+Using Prometheus, cadvisor, and Node Exporter, we collect real-time data on CPU, memory, and disk usage, helping us optimize task scheduling and resource allocation.
+
+**Efficient Communication:** We utilize MQTT and UDP protocols to ensure low-latency communication between worker nodes and the CRMA, allowing for real-time task updates, health checks, and resource reporting.
+
+**Autonomic Control:** Following the MAPE-K (Monitor, Analyze, Plan, Execute, Knowledge) model, we’ve enabled self-managing resource optimization, reducing the need for manual intervention.
+
+![Alt text](https://gitlab.rz.uni-bamberg.de/ktr/proj/st-2024/group-crms/code/-/raw/main/Static/Images/CRMA-Diagram.png)
+
+Our system is designed specifically for fog computing environments, where real-time data processing at the network edge is crucial. We’ve integrated Grafana dashboards to provide a visual representation of resource usage, allowing for proactive management of network performance.
+
+With this enhanced CRMS, we’ve significantly improved reliability, scalability, and efficiency, making it ideal for large-scale IoT applications that demand real-time processing and decentralized control.
+
