@@ -79,6 +79,12 @@ class DockerManager:
             docker_client.compose.build(services=None)  # Build all services
             docker_client.compose.up(detach=True)
             logger.info("Docker-compose build and run completed successfully.")
+
+            # Add a delay to allow services to start before checking their status
+            delay = 45
+            logger.info(f"Waiting for {delay} seconds before checking service status...")
+            time.sleep(delay)
+
             return True
         except DockerException as e:
             logger.error(f"An error occurred with Docker: {e}")

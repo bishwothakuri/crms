@@ -24,7 +24,7 @@ QUERY_RESULTS_TOPIC = cfg["topics"]["query_results"]
 PROMETHEUS_API_URL = (
     cfg["prometheus"]["url"] + "/api/v1/%query_type%?query=%query_expr%%query_params%"
 )
-# Path for the queries file
+# Use the correct path for the queries file
 QUERIES_FILE_PATH = cfg["queries"]["file_path"]
 
 # Default interval from settings
