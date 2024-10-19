@@ -57,8 +57,10 @@ services:
       dockerfile: monitord/Dockerfile
     container_name: monitord
     depends_on:
-      - mqtt-broker
-      - builderd
+      mqtt-broker:
+        condition: service_started
+      builderd:
+          condition: service_healthy
     environment:
       - PYTHONUNBUFFERED=1
       - MQTT_BROKER=mqtt-broker
