@@ -1,5 +1,3 @@
-# worker_node/utils/settings.py
-
 import os
 import sys
 import yaml
@@ -23,12 +21,12 @@ def initialize():
     
     # Load settings from YAML configuration
     global cfg
-    with open(os.path.join(main_path, 'settings.yml'), 'r') as f:
-        try:
+    try:
+        with open(os.path.join(main_path, 'settings.yml'), 'r') as f:
             cfg = yaml.safe_load(f)
-        except yaml.YAMLError as exc:
-            print(f"Error loading settings.yml: {exc}")
-            return
+    except (FileNotFoundError, yaml.YAMLError) as exc:
+        print(f"Error loading settings.yml: {exc}")
+        sys.exit(1)
 
     global socket_info
     global broadcast_info
@@ -43,14 +41,23 @@ def initialize():
     ipv4_addr = None
     ipv4_broadcast_addr = None
 
-    # Find IPv4 and broadcast addresses of the primary interface
-    for nic, addrs in psutil.net_if_addrs().items():
-        if nic == interface_name:
-            for addr in addrs:
-                if af_map.get(addr.family) == 'IPv4':
-                    ipv4_addr = addr.address
-                    if addr.broadcast:
-                        ipv4_broadcast_addr = addr.broadcast
+    # Check if running inside a Docker container
+    is_docker = os.path.exists('/.dockerenv')
+
+    # If running inside Docker, set Docker-compatible defaults
+    if is_docker:
+        print("Running inside Docker. Using Docker-specific defaults.")
+        ipv4_addr = '127.0.0.1'  # Use localhost as the default IP address
+        ipv4_broadcast_addr = '255.255.255.255'
+    else:
+        # Find IPv4 and broadcast addresses of the primary interface
+        for nic, addrs in psutil.net_if_addrs().items():
+            if nic == interface_name:
+                for addr in addrs:
+                    if af_map.get(addr.family) == 'IPv4':
+                        ipv4_addr = addr.address
+                        if addr.broadcast:
+                            ipv4_broadcast_addr = addr.broadcast
 
     # Set socket information based on the configuration and detected addresses
     if ipv4_addr:

@@ -1,28 +1,95 @@
 version: "3.7"
 
 services:
-  mqtt5:
+  mqtt-broker:
     image: eclipse-mosquitto
-    container_name: mqtt5
+    container_name: mqtt-broker
     ports:
-      - "1883:1883"  # Default MQTT port
-      - "9001:9001"  # Websockets port for MQTT
+      - "1883:1883"
+      - "9001:9001"
     volumes:
-      - ./mosquitto/config/mosquitto.conf:/mosquitto/config/mosquitto.conf      # Mosquitto configuration file
-      - ./mosquitto/config/pwfile:/mosquitto/config/pwfile                      # Password file for authentication
-      - ./mosquitto/data:/mosquitto/data:rw                                     # Data storage for Mosquitto
-      - ./mosquitto/log:/mosquitto/log:rw                                       # Log storage for Mosquitto
+      - ./mosquitto/config/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./mosquitto/config/pwfile:/mosquitto/config/pwfile:ro
+      - ./mosquitto/data:/mosquitto/data:rw
+      - ./mosquitto/log:/mosquitto/log:rw
     restart: unless-stopped
     networks:
-      - mqtt5-network
+      - mqtt-network
 
-# Volume definitions for persistent storage
-volumes:
-  config:
-  data:
-  log:
+  builderd:
+    image: builderd:v1.0
+    container_name: builderd
+    depends_on:
+      - mqtt-broker
+    environment:
+      - PYTHONUNBUFFERED=1
+      - MQTT_BROKER=mqtt-broker
+      - MQTT_PORT=1883
+      - MQTT_TOPIC=build/task
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - mqtt-network
+      - monitoring-net  # Connect builderd to monitoring-net
 
-# Network setup for the Mosquitto service
+  coordinatord:
+    image: coordinatord:v1.0
+    container_name: coordinatord
+    depends_on:
+      - mqtt-broker
+      - builderd
+    environment:
+      - PYTHONUNBUFFERED=1
+      - MQTT_BROKER=mqtt-broker
+      - MQTT_PORT=1883
+      - MQTT_TOPIC=build/task
+    networks:
+      - mqtt-network
+
+  monitord:
+    image: monitord:v1.0
+    container_name: monitord
+    depends_on:
+      - mqtt-broker
+      - builderd
+    environment:
+      - PYTHONUNBUFFERED=1
+      - MQTT_BROKER=mqtt-broker
+      - MQTT_PORT=1883
+      - MONITOR_TOPIC=monitor/task
+      - QUERY_RESULTS_TOPIC=monitor/results
+    networks:
+      - mqtt-network
+      - monitoring-net  # Connect monitord to monitoring-net
+
+  queryd:
+    image: queryd:v1.0
+    container_name: queryd
+    depends_on:
+      - mqtt-broker
+      - monitord
+    environment:
+      - PYTHONUNBUFFERED=1
+      - MQTT_BROKER=mqtt-broker
+      - MQTT_PORT=1883
+      - QUERY_RESULTS_TOPIC=monitor/results
+      - ONOS_CONTROLLER_ADDR=127.0.0.1
+      - ONOS_CONTROLLER_PORT=6653
+    networks:
+      - mqtt-network
+
+  udp-sender:
+    image: busybox
+    container_name: udp-sender
+    entrypoint: ["sh", "-c", "sleep 5 && echo -n 'ACK' | nc -u coordinatord 54321"]
+    depends_on:
+      - coordinatord
+    networks:
+      - mqtt-network
+
 networks:
-  mqtt5-network:
+  mqtt-network:
     driver: bridge
+  monitoring-net:
+    external: true
+      

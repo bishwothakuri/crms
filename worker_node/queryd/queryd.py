@@ -12,9 +12,9 @@ import paho.mqtt.client as mqtt
 from datetime import datetime
 
 # Import the common logging configuration
-from worker_node.utils.logging_config import configure_logging
-from worker_node.utils import settings
-from worker_node.utils.settings import cfg
+from utils.logging_config import configure_logging
+from utils import settings
+from utils.settings import cfg
 
 # Configure logging
 configure_logging()

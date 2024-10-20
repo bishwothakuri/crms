@@ -7,7 +7,7 @@ system:
 
 # MQTT Broker Configuration
 mqtt:
-  broker: "localhost" # IP address or hostname of the MQTT broker
+  broker: "mqtt-broker" # IP address or hostname of the MQTT broker
   port: 1883 # Default MQTT port
   keepalive: 60 # Keep-alive period in seconds
 
@@ -27,14 +27,34 @@ coordinatord:
   ack_message: "ACK"
 
 
-# Builderd Daemon Configurations
 builderd:
   monitoring_stack:
-  - "prometheus"
-  - "cadvisor"
-  - "node-exporter"
-  monitoring_stack_file: "monitoring_stack_docker_compose.yml"
+  - container_name: "prometheus"
+    image: "bishwo007/prometheus:v1.0"
+    ports:
+      "9090": "9090"
+    networks:
+    - "monitoring-net"
 
+  - container_name: "node-exporter"
+    image: "prom/node-exporter:latest"
+    ports:
+      "9100": "9100"
+    networks:
+    - "monitoring-net"
+
+  - container_name: "cadvisor"
+    image: "gcr.io/cadvisor/cadvisor:latest"
+    ports:
+      "8080": "8080"
+    volumes:
+    - "/:/rootfs:ro"
+    - "/var/run:/var/run:rw"
+    - "/sys:/sys:ro"
+    - "/var/lib/docker/:/var/lib/docker:ro"
+    privileged: true
+    networks:
+    - "monitoring-net"
 
 queryd:
   send_port: 10410 # port for sending out UDP "specialized" packets to ONOS controller.
@@ -53,10 +73,10 @@ topics:
 
 # Prometheus Configuration
 prometheus:
-  url: "http://localhost:9090"
+  url: "http://host.docker.internal:9090"
 
 queries:
-  file_path: "worker_node/monitoring_config/queries.yml"
+  file_path: "monitoring_config/queries.yml"
 
 # Broadcast and Socket Information
 socket_info:
@@ -72,3 +92,5 @@ broadcast_info:
 # Logging Configuration
 logging:
   level: "INFO" # Logging level: DEBUG, INFO, WARNING, ERROR, CRITICAL
+
+

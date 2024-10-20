@@ -6,8 +6,8 @@ import json  # Import the json module
 from typing import List, Optional, Dict
 
 # Import the common logging configuration
-from worker_node.utils import logging_config as log_config
-from worker_node.utils.settings import cfg
+from utils import logging_config as log_config
+from utils.settings import cfg
 
 # Set up the logger
 logger = logging.getLogger("Monitor")
