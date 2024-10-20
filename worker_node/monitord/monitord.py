@@ -86,15 +86,19 @@ def assemble_query(
     # Replace the query expression in the URL
     url = url.replace("%query_expr%", requests.utils.quote(expr))
 
+    # Construct the query_params string
     param_values = ""
-
-    # Build query_params
     for k, v in param_defaults.items():
         if v:
             param_values += "&" + str(k) + "=" + str(v)
 
     # Replace params
-    url = url.replace("%query_params%", param_values)
+    if param_values:
+        url = url.replace("%query_params%", param_values)
+    else:
+        url = url.replace("%query_params%", "")
+
+    logger.debug(f"Final URL: {url}")
 
     return {
         "url": url,
@@ -106,7 +110,6 @@ def assemble_query(
             "timestamp": param_defaults.get("time"),
         },
     }
-
 
 class QueryManager:
     """Manages loading, executing, and formatting Prometheus queries."""
