@@ -1,88 +1,70 @@
+# Cloudless Resource Monitoring System (CRMS) v2.0
 
-### Cloudless Resource Monitoring System Version 2.0 (Focused on Generation Layer)
-We developed the Cloudless Resource Monitoring System (CRMS) as a solution to the limitations of traditional cloud architectures by integrating Software-Defined Networking (SDN) and fog computing. Our system leverages Docker-based containerization to dynamically manage resources across distributed fog nodes, ensuring low latency and high efficiency.
+**Distributed Fog Computing & Autonomous Resource Orchestration**
 
-## Requirements
+CRMS is a decentralized resource management framework designed for edge/fog computing environments. By integrating Software-Defined Networking (SDN) with a MAPE-K autonomic control loop, the system eliminates single points of failure (SPOF) and optimizes resource allocation across distributed nodes with sub-millisecond coordination requirements.
 
-Before you begin, ensure you have the following prerequisites installed on your system:
+##  Architectural Design
 
-### System Requirements
+The system transitions from traditional centralized cloud logic to a distributed microservices architecture. Each worker node operates as an autonomous unit running a four-tier stack:
 
-- **Operating System:** 
-  - Ubuntu
-- **Filesystem:** 
-  - XFS (required)
-- **Docker**
-- **Python**
+<div align="center">
 
-[]([[[[url](url)](url)](url)](url))
+![CRMS Architecture](https://raw.githubusercontent.com/bishwothakuri/crms/main/Static/Images/CRMA-Diagram.png#gh-light-mode-only)
+![CRMS Architecture](https://raw.githubusercontent.com/bishwothakuri/crms/main/Static/Images/CRMA-Diagram.png#gh-dark-mode-only)
 
-#### Clone the Repository
+</div>
 
-Use the following command to clone the project repository to your local machine:
+- **Coordinator**: Manages node-level state and consensus
+- **Builder**: Orchestrates containerized workloads via Docker Engine
+- **Monitor**: Real-time telemetry ingestion
+- **Query**: High-availability data retrieval for distributed state awareness
 
+##  Tech Stack & Engineering Choices
+
+- **Infrastructure**: Docker, Kubernetes, SDN (Software Defined Networking)
+- **Communication**: MQTT & UDP
+  - *Choice*: UDP was selected for low-latency health heartbeats, while MQTT ensures reliable asynchronous state updates across high-latency fog links
+- **Observability**: Prometheus, cAdvisor, Node Exporter, and Grafana
+- **Storage**: XFS Filesystem (Optimized for high-concurrency container I/O)
+
+##  Key Engineering Challenges Solved
+
+### 1. Fault Tolerance & Decentralization
+
+We implemented a peer-to-peer management model where worker nodes function autonomously. This prevents the "cascading failure" common in centralized orchestrators.
+
+### 2. Low-Latency Telemetry
+
+Using a MAPE-K (Monitor-Analyze-Plan-Execute) loop, the system performs self-healing. By leveraging Prometheus for metrics and MQTT for the control plane, the system achieves real-time task scheduling at the network edge.
+
+### 3. Resource Constraints
+
+Designed specifically for Fog nodes where CPU/RAM are finite. The microservice footprint was minimized to ensure the monitoring overhead does not starve the actual workloads.
+
+##  Getting Started (Production Setup)
+
+### Prerequisites
+
+- **Host OS**: Ubuntu with XFS Filesystem (Critical for container volume performance)
+- **Engine**: Docker & Docker Compose
+
+### Deployment
 ```bash
-git clone https://gitlab.rz.uni-bamberg.de/ktr/proj/st-2024/group-crms/code.git
+# Clone the distributed stack
+git clone git@github.com:bishwothakuri/crms.git && cd worker_node
+
+# Build the autonomous microservice layers
+docker-compose build
+
+# Launch the distributed node
+docker-compose up -d
 ```
 
-#### Navigate to the Project Directory
+##  Observability
 
-After cloning, change into the project directory:
+The system exports metrics to a pre-configured Grafana dashboard, providing visibility into:
 
-```bash
-cd code
-```
-
-#### Build the Project
-
-To build the Docker containers, you can choose from the following options:
-
-- **To build all services defined in the `docker-compose.yml`:**
-
-  ```bash
-  docker-compose build
-  ```
-
-- **To build a specific service:**
-
-  Replace `<service>` with the name of the specific service you want to build:
-
-  ```bash
-  docker-compose build <service>
-  ```
-
-**Note:** Use the service name as defined in the `docker-compose.yml` file.
-
-#### Run the Project
-
-To start the services defined in the `docker-compose.yml`, execute the following command:
-
-```bash
-docker-compose up
-```
-
-#### Stopping the Services
-
-To stop the running services, use:
-
-```bash
-docker-compose down
-```
-
-**Key Features:**
-
-**Decentralized Architecture:** We eliminated the single point of failure by distributing resource management across worker nodes. Each node now runs four microservices—Coordinator, Builder, Monitor, and Query—which allows them to function autonomously and improve the overall scalability and fault tolerance of the system.
-
-**Resource Monitoring:**
-Using Prometheus, cadvisor, and Node Exporter, we collect real-time data on CPU, memory, and disk usage, helping us optimize task scheduling and resource allocation.
-
-**Efficient Communication:** We utilize MQTT and UDP protocols to ensure low-latency communication between worker nodes and the CRMA, allowing for real-time task updates, health checks, and resource reporting.
-
-**Autonomic Control:** Following the MAPE-K (Monitor, Analyze, Plan, Execute, Knowledge) model, we’ve enabled self-managing resource optimization, reducing the need for manual intervention.
-
-![Alt text](https://github.com/bishwothakuri/crms/blob/main/Static/Images/CRMA-Diagram.png)
-
-Our system is designed specifically for fog computing environments, where real-time data processing at the network edge is crucial. We’ve integrated Grafana dashboards to provide a visual representation of resource usage, allowing for proactive management of network performance.
-
-With this enhanced CRMS, we’ve significantly improved reliability, scalability, and efficiency, making it ideal for large-scale IoT applications that demand real-time processing and decentralized control.
-
+- **Node Saturation**: CPU/Memory pressure via cAdvisor
+- **Network Latency**: UDP heartbeat frequency and MQTT broker throughput
+- **MAPE-K Cycle Time**: Latency between resource detection and autonomous re-planning
