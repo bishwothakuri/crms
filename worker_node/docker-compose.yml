@@ -15,7 +15,6 @@ services:
       - mqtt-net
 
   builderd:
-    image: builderd:v2.0
     build:
       context: .
       dockerfile: builderd/Dockerfile
@@ -24,6 +23,7 @@ services:
       - mqtt-broker
     environment:
       - PYTHONUNBUFFERED=1
+      - UV_HOME=/app/.venv
       - MQTT_BROKER=mqtt-broker
       - MQTT_PORT=1883
       - MQTT_TOPIC=build/task
@@ -31,10 +31,9 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - mqtt-net
-      - monitoring-net  # Connect builderd to monitoring-net
+      - monitoring-net
 
   coordinatord:
-    image: coordinatord:v2.0
     build:
       context: .
       dockerfile: coordinatord/Dockerfile
@@ -44,14 +43,17 @@ services:
       - builderd
     environment:
       - PYTHONUNBUFFERED=1
+      - UV_HOME=/app/.venv
       - MQTT_BROKER=mqtt-broker
       - MQTT_PORT=1883
       - MQTT_TOPIC=build/task
     networks:
       - mqtt-net
+    # Expose UDP port for udp-sender
+    ports:
+      - "54321:54321"
 
   monitord:
-    image: monitord:v2.0
     build:
       context: .
       dockerfile: monitord/Dockerfile
@@ -61,16 +63,16 @@ services:
       - builderd
     environment:
       - PYTHONUNBUFFERED=1
+      - UV_HOME=/app/.venv
       - MQTT_BROKER=mqtt-broker
       - MQTT_PORT=1883
       - MONITOR_TOPIC=monitor/task
       - QUERY_RESULTS_TOPIC=monitor/results
     networks:
       - mqtt-net
-      - monitoring-net  # Connect monitord to monitoring-net
+      - monitoring-net
 
   queryd:
-    image: queryd:v2.0
     build:
       context: .
       dockerfile: queryd/Dockerfile
@@ -80,6 +82,7 @@ services:
       - monitord
     environment:
       - PYTHONUNBUFFERED=1
+      - UV_HOME=/app/.venv
       - MQTT_BROKER=mqtt-broker
       - MQTT_PORT=1883
       - QUERY_RESULTS_TOPIC=monitor/results
@@ -102,4 +105,3 @@ networks:
     external: true
   monitoring-net:
     external: true
-      

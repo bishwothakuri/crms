@@ -1,70 +1,29 @@
-# Base image
 FROM python:3.13-slim
 
-# ----------------------------
-# Environment Variables
-# ----------------------------
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONPATH=/app \
-    UV_HOME=/app/.venv
+    DOCKER_CLI_HOME=/root/.docker
 
-# ----------------------------
-# System Dependencies
-# ----------------------------
-RUN apt-get update && \
-    apt-get install -y curl wget unzip git && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl ca-certificates && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# ----------------------------
-# Set Working Directory
-# ----------------------------
 WORKDIR /app
 
-# ----------------------------
-# Copy Dependency Files First
-# ----------------------------
-COPY pyproject.toml uv.lock ./
+# Install binaries directly - avoid using Python for system setup
+RUN mkdir -p $DOCKER_CLI_HOME/cli-plugins && \
+    curl -SL https://github.com/docker/buildx/releases/download/v0.11.2/buildx-v0.11.2.linux-amd64 -o $DOCKER_CLI_HOME/cli-plugins/docker-buildx && \
+    curl -SL https://github.com/docker/compose/releases/download/v2.20.2/docker-compose-linux-x86_64 -o $DOCKER_CLI_HOME/cli-plugins/docker-compose && \
+    chmod +x $DOCKER_CLI_HOME/cli-plugins/docker-buildx $DOCKER_CLI_HOME/cli-plugins/docker-compose
 
-# ----------------------------
-# Install uv and Dependencies
-# ----------------------------
-RUN python -m pip install --upgrade pip && \
-    pip install uv && \
-    uv sync --no-dev
+RUN --mount=type=cache,target=/root/.cache/uv \
+    --mount=type=bind,source=uv.lock,target=uv.lock \
+    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
+    uv sync --frozen --no-install-project --no-dev
 
-# ----------------------------
-# Install Docker CLI, Buildx, Compose
-# ----------------------------
-# Use python-on-whales to download Docker CLI
-RUN uv run python -m python_on_whales.cli download-cli
+COPY . .
 
-# Buildx plugin
-RUN mkdir -p $HOME/.docker/cli-plugins/ && \
-    wget -q https://github.com/docker/buildx/releases/download/v0.10.5/buildx-v0.10.5.linux-amd64 \
-    -O $HOME/.docker/cli-plugins/docker-buildx && \
-    chmod a+x $HOME/.docker/cli-plugins/docker-buildx
-
-# Compose plugin
-RUN mkdir -p $HOME/.docker/cli-plugins/ && \
-    wget -q https://github.com/docker/compose/releases/download/v2.18.1/docker-compose-linux-x86_64 \
-    -O $HOME/.docker/cli-plugins/docker-compose && \
-    chmod a+x $HOME/.docker/cli-plugins/docker-compose
-
-# ----------------------------
-# Copy Application Code
-# ----------------------------
-COPY builderd /app/builderd
-COPY utils /app/utils
-COPY monitoring_config /app/monitoring_config
-
-# ----------------------------
-# Expose Ports
-# ----------------------------
-EXPOSE 1883 8080
-
-# ----------------------------
-# Entrypoint
-# ----------------------------
 ENTRYPOINT ["uv", "run", "python", "-m", "builderd.builderd"]
