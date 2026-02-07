@@ -1,49 +1,70 @@
-# Use the official Python base image
-FROM python:3.12-slim
+# Base image
+FROM python:3.13-slim
 
-# Set environment variables
+# ----------------------------
+# Environment Variables
+# ----------------------------
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONPATH=/app
+    PYTHONPATH=/app \
+    UV_HOME=/app/.venv
 
-# Install system dependencies
+# ----------------------------
+# System Dependencies
+# ----------------------------
 RUN apt-get update && \
-    apt-get install -y curl wget && \
+    apt-get install -y curl wget unzip git && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Install python-on-whales
-RUN pip install python-on-whales
-
-# Download and install the Docker CLI (optional if not available)
-RUN python-on-whales download-cli
-
-# Install Docker buildx (optional)
-RUN mkdir -p ~/.docker/cli-plugins/ && \
-    wget https://github.com/docker/buildx/releases/download/v0.6.3/buildx-v0.6.3.linux-amd64 -O ~/.docker/cli-plugins/docker-buildx && \
-    chmod a+x  ~/.docker/cli-plugins/docker-buildx
-
-# Install Docker Compose (optional)
-RUN mkdir -p ~/.docker/cli-plugins/ && \
-    wget https://github.com/docker/compose/releases/download/v2.0.1/docker-compose-linux-x86_64 -O ~/.docker/cli-plugins/docker-compose && \
-    chmod a+x ~/.docker/cli-plugins/docker-compose
-
-# Set the working directory inside the container
+# ----------------------------
+# Set Working Directory
+# ----------------------------
 WORKDIR /app
 
-# Copy the requirements file into the container
-COPY requirements.txt .
+# ----------------------------
+# Copy Dependency Files First
+# ----------------------------
+COPY pyproject.toml uv.lock ./
 
-# Install dependencies using pip
-RUN pip install --no-cache-dir -r requirements.txt
+# ----------------------------
+# Install uv and Dependencies
+# ----------------------------
+RUN python -m pip install --upgrade pip && \
+    pip install uv && \
+    uv sync --no-dev
 
-# Copy the builderd and utils modules
+# ----------------------------
+# Install Docker CLI, Buildx, Compose
+# ----------------------------
+# Use python-on-whales to download Docker CLI
+RUN uv run python -m python_on_whales.cli download-cli
+
+# Buildx plugin
+RUN mkdir -p $HOME/.docker/cli-plugins/ && \
+    wget -q https://github.com/docker/buildx/releases/download/v0.10.5/buildx-v0.10.5.linux-amd64 \
+    -O $HOME/.docker/cli-plugins/docker-buildx && \
+    chmod a+x $HOME/.docker/cli-plugins/docker-buildx
+
+# Compose plugin
+RUN mkdir -p $HOME/.docker/cli-plugins/ && \
+    wget -q https://github.com/docker/compose/releases/download/v2.18.1/docker-compose-linux-x86_64 \
+    -O $HOME/.docker/cli-plugins/docker-compose && \
+    chmod a+x $HOME/.docker/cli-plugins/docker-compose
+
+# ----------------------------
+# Copy Application Code
+# ----------------------------
 COPY builderd /app/builderd
 COPY utils /app/utils
 COPY monitoring_config /app/monitoring_config
 
-# Expose necessary ports
+# ----------------------------
+# Expose Ports
+# ----------------------------
 EXPOSE 1883 8080
 
-# Set the entrypoint to start the builderd service
-ENTRYPOINT ["python", "-m", "builderd.builderd"]
+# ----------------------------
+# Entrypoint
+# ----------------------------
+ENTRYPOINT ["uv", "run", "python", "-m", "builderd.builderd"]
