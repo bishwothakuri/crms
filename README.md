@@ -11,7 +11,7 @@ The system transitions from traditional centralized cloud logic to a distributed
 <div align="center">
 
 ![CRMS Architecture](https://raw.githubusercontent.com/bishwothakuri/crms/main/static/images/crma-architecture.png#gh-light-mode-only)
-![CRMS Architecture](https://raw.githubusercontent.com/bishwothakuri/crms/main/Static/Images/crma-architecture.png#gh-dark-mode-only)
+![CRMS Architecture](https://raw.githubusercontent.com/bishwothakuri/crms/main/static/images/crma-architecture.png#gh-dark-mode-only)
 
 </div>
 
